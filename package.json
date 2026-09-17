@@ -4,6 +4,7 @@
   "version": "1.0.0",
   "type": "module",
   "description": "梭哈 (Five-Card Stud) — 2-5 player poker with chip system, provably-fair shuffle and per-player text export",
+  "license": "GPL-3.0-only",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",

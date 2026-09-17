@@ -2,6 +2,7 @@
 
 一个完整可玩的**五张梭哈**（Five-Card Stud）网页游戏：2–5 人、洗牌发牌全流程、
 筹码与边池系统、可证明公平的发牌，以及**按玩家视角导出文本局面**。
+同一份代码也打包成 iOS App（Capacitor），可由 CI 在 macOS runner 上产出 `.ipa`。
 
 React 19 + TypeScript + Vite。引擎是纯函数式的、可测试的，UI 只是它的投影。
 
@@ -10,6 +11,9 @@ npm install
 npm run fetch:cards   # 下载公有领域扑克牌素材（Wikimedia Commons, CC0）
 npm run dev           # http://127.0.0.1:5273
 ```
+
+> 许可证：**GPL-3.0-only**，见 [LICENSE](LICENSE)。
+> 牌面素材是 CC0（公有领域贡献），与 GPL 兼容，随仓库一并分发。
 
 ---
 
@@ -325,5 +329,36 @@ scripts/
 - 明牌先手规则采用标准 stud 的「明牌成手最大者先说话」；部分简易实现只比最大单张。
 - 摊牌时亮出所有未弃牌玩家的底牌（多数线上实现的做法），而非只亮最后加注者。
 - 同屏模式依赖「遮挡页 + 自觉」，无法在技术上阻止同一设备上的其他人偷看。
+- iOS 状态栏固定为浅色文字，配合默认的暗色主题；在 App 内切到亮色主题时状态栏对比度偏低
+  （要随主题切换需要引入 `@capacitor/status-bar`）。
+
+---
+
+## 许可证
+
+本项目以 **GNU General Public License v3.0**（`GPL-3.0-only`）发布，全文见 [LICENSE](LICENSE)。
+
+```
+Copyright (C) 2026  a1544676809
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, version 3 of the License.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+```
+
+想允许「GPLv3 或更高版本」，把 `package.json` 的 `license` 改成 `GPL-3.0-or-later`
+并在上面这段里加上 “or (at your option) any later version” 即可。
+
+**第三方素材**：`public/cards/` 下的 53 个牌面 PNG 来自 Wikimedia Commons 的
+*Public domain playing cards* 分类，全部为 **CC0 1.0**（公有领域贡献）。
+CC0 与 GPLv3 兼容，可随本项目一并分发；每张图的原始文件页与作者记录在
+`public/cards/manifest.json` 中（由 `npm run fetch:cards` 生成）。
+
+依赖库各自遵循其原有许可证（React — MIT，Capacitor — MIT，Vite / Vitest — MIT）。
 
 

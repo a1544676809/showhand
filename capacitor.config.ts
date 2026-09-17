@@ -7,6 +7,8 @@ import type { CapacitorConfig } from '@capacitor/cli'
  * engine, the AI, the provably-fair shuffle and the local chip bankroll all work
  * offline because nothing is fetched at runtime except the card art, which is
  * bundled too.
+ *
+ * SPDX-License-Identifier: GPL-3.0-only
  */
 const config: CapacitorConfig = {
   appId: 'com.showhand.stud',
