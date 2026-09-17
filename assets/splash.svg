@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2732" height="2732" viewBox="0 0 2732 2732">
+  <defs>
+    <radialGradient id="felt" cx="50%" cy="42%" r="72%">
+      <stop offset="0%" stop-color="#1a7156"/>
+      <stop offset="55%" stop-color="#0d4a34"/>
+      <stop offset="100%" stop-color="#051a13"/>
+    </radialGradient>
+    <linearGradient id="cardFace" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff"/>
+      <stop offset="100%" stop-color="#e6ebf1"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffe6b4"/>
+      <stop offset="100%" stop-color="#c1932f"/>
+    </linearGradient>
+    <pattern id="cardBack" width="40" height="40" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="40" height="40" fill="#c02a35"/>
+      <rect width="20" height="40" fill="#94161f"/>
+    </pattern>
+    <filter id="lift" x="-40%" y="-40%" width="180%" height="180%">
+      <feDropShadow dx="0" dy="24" stdDeviation="30" flood-color="#000000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <rect width="2732" height="2732" fill="url(#felt)"/>
+
+  <!-- Logo, nudged above centre to leave room for the wordmark -->
+  <g transform="translate(1366 1130) scale(1.16) translate(-512 -512)">
+    <g transform="rotate(-14 512 512)" filter="url(#lift)">
+      <rect x="300" y="212" width="392" height="556" rx="48" fill="url(#cardBack)"
+            stroke="#f7f3ea" stroke-width="14"/>
+    </g>
+    <g transform="rotate(8 512 512)" filter="url(#lift)">
+      <rect x="352" y="236" width="392" height="556" rx="48" fill="url(#cardFace)"/>
+      <text x="404" y="360" font-family="Georgia, 'Times New Roman', serif"
+            font-size="132" font-weight="700" fill="#12181e">A</text>
+      <g transform="translate(548 560) scale(1.62)">
+        <path fill="#12181e" d="M0,-100
+          C -15,-68 -82,-26 -82,22
+          C -82,64 -49,88 -18,79
+          C -27,105 -36,122 -53,134
+          L 53,134
+          C 36,122 27,105 18,79
+          C 49,88 82,64 82,22
+          C 82,-26 15,-68 0,-100 Z"/>
+      </g>
+    </g>
+  </g>
+
+  <text x="1366" y="2130" text-anchor="middle"
+        font-family="'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif"
+        font-size="240" font-weight="700" letter-spacing="28" fill="url(#gold)">梭哈</text>
+
+  <text x="1366" y="2270" text-anchor="middle"
+        font-family="'Helvetica Neue', Arial, sans-serif"
+        font-size="58" letter-spacing="26" fill="#8fb3a6">FIVE-CARD STUD</text>
+</svg>

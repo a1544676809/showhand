@@ -1,0 +1,36 @@
+{
+  "name": "showhand",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "梭哈 (Five-Card Stud) — 2-5 player poker with chip system, provably-fair shuffle and per-player text export",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "fetch:cards": "pwsh -NoProfile -File scripts/fetch-cards.ps1",
+    "shots": "node scripts/screenshot.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "ios:sync": "npm run build && cap sync ios",
+    "ios:open": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
+    "@types/node": "^22.20.3",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.0.4",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.14",
+    "vitest": "^3.2.4"
+  }
+}

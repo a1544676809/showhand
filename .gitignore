@@ -1,0 +1,51 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+*.local
+
+# Visual regression captures
+screenshots/
+
+# The CC0 card art IS committed (3 MB, ~53 files): the iOS build bundles it and
+# CI runners cannot be relied on to re-fetch it through a proxy.
+# Regenerate with `npm run fetch:cards`.
+
+# Editor / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# iOS / Capacitor build artefacts (the project itself IS committed,
+# so the app icon, Info.plist and SPM manifest survive the CI checkout)
+ios/App/build/
+ios/App/Pods/
+ios/App/output/
+ios/App/App/public/
+ios/App/App/capacitor.config.json
+ios/App/App/config.xml
+ios/App/CapApp-SPM/.build/
+ios/App/CapApp-SPM/Packages/
+ios/DerivedData/
+/DerivedData/
+Payload/
+*.ipa
+*.xcuserstate
+xcuserdata/

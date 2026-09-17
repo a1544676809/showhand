@@ -1,0 +1,116 @@
+name: iOS IPA
+
+# Builds an unsigned .ipa on a macOS runner. Windows/Linux cannot compile the
+# iOS shell, so CI is the only way to produce one from this repo.
+#
+# The output is UNSIGNED: install it by re-signing (Sideloadly / AltStore with a
+# free Apple ID, 7-day expiry) or on a jailbroken device. Signing a real
+# distribution build needs an Apple Developer certificate, which is not
+# available here.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'public/**'
+      - 'ios/**'
+      - 'index.html'
+      - 'package.json'
+      - 'capacitor.config.ts'
+      - '.github/workflows/ios.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ipa:
+    name: Build unsigned IPA
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check and build the web bundle
+        run: npm run build
+
+      - name: Show toolchain versions
+        run: |
+          xcodebuild -version
+          swift --version || true
+          pod --version || true
+
+      - name: Sync web assets into the iOS project
+        run: npx cap sync ios
+
+      - name: Install CocoaPods dependencies
+        working-directory: ios/App
+        run: |
+          if [ -f Podfile ]; then
+            pod install --repo-update
+          else
+            echo "No Podfile — this project uses Swift Package Manager."
+          fi
+
+      - name: Build the app (unsigned)
+        working-directory: ios/App
+        run: |
+          set -o pipefail
+          if [ -d App.xcworkspace ]; then
+            CONTAINER=(-workspace App.xcworkspace)
+          else
+            CONTAINER=(-project App.xcodeproj)
+          fi
+
+          xcodebuild "${CONTAINER[@]}" \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            -destination 'generic/platform=iOS' \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_ENTITLEMENTS="" \
+            build
+
+      - name: Package the .ipa
+        run: |
+          APP_PATH="ios/App/build/Build/Products/Release-iphoneos/App.app"
+          if [ ! -d "$APP_PATH" ]; then
+            echo "App bundle not found at $APP_PATH"
+            find ios/App/build/Build/Products -maxdepth 3 -name '*.app' || true
+            exit 1
+          fi
+
+          rm -rf Payload Showhand-unsigned.ipa
+          mkdir -p Payload
+          cp -R "$APP_PATH" Payload/
+          # Unsigned, so strip any stale signature before zipping.
+          rm -rf Payload/App.app/_CodeSignature || true
+          zip -qry Showhand-unsigned.ipa Payload
+
+          ls -lh Showhand-unsigned.ipa
+          unzip -l Showhand-unsigned.ipa | head -20
+
+      - name: Upload the IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: showhand-unsigned-ipa
+          path: Showhand-unsigned.ipa
+          if-no-files-found: error
+          retention-days: 30
