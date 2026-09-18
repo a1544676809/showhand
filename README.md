@@ -266,6 +266,9 @@ scripts/
 | `npm run typecheck` | 仅类型检查 |
 | `npm run fetch:cards` | 下载牌面素材（`-Proxy ''` 可直连，`-Force` 可强制重下） |
 | `npm run shots` | 截取 17 张界面截图到 `screenshots/`，并校验布局与 DOM 层不变量 |
+| `npm run icons` | 由 `assets/*.svg` 生成 App 图标与启动图 |
+| `npm run ios:sync` | 构建网页并同步进 iOS 工程（`cap sync ios`） |
+| `npm run ios:open` | 用 Xcode 打开 iOS 工程（需要 macOS） |
 
 ### 测试覆盖
 
@@ -292,6 +295,59 @@ scripts/
 - 界面（`npm run shots`，在真实 Chrome 里跑）：三种视口下**页面无纵向溢出**、
   上帝视角**底牌默认全部隐藏**、点 👁 只翻开目标座位且再点一次重新盖上、
   AI/真人切换可逆、牌面不重复、暗牌背后不存在牌面 `img` 节点（遮挡在 DOM 层也成立）。
+
+---
+
+## iOS / .ipa
+
+同一份代码用 **Capacitor** 包成 iOS App：整个游戏跑在 WKWebView 里，引擎、AI、
+可证明公平洗牌、筹码记录全部离线可用，牌面素材也一并打进包里。
+
+**为什么走 CI**：iOS 只能在 macOS 上用 Xcode 编译，这台机器是 Windows。
+`.github/workflows/ios.yml` 在 `macos-15` runner 上构建，产出可直接下载的 `.ipa`。
+
+```bash
+# 触发一次构建（也可以直接 push 到 main）
+gh workflow run "iOS IPA"
+
+# 等它跑完并取回产物
+gh run watch $(gh run list --workflow="iOS IPA" --limit 1 --json databaseId --jq '.[0].databaseId')
+gh run download $(gh run list --workflow="iOS IPA" --limit 1 --json databaseId --jq '.[0].databaseId')
+```
+
+产物是 **未签名** 的 `Showhand-unsigned.ipa`（约 5.7 MB）：
+
+| 内容 | 大小 |
+| --- | --- |
+| `Assets.car`（图标 + 启动图） | 2.1 MB |
+| `public/cards/`（53 张牌面） | 3.1 MB |
+| JS + CSS | 0.3 MB |
+| 可执行文件 `App` | 88 KB |
+| `Frameworks/`（Capacitor + Cordova，SPM） | — |
+
+### 安装
+
+未签名意味着不能直接双击装进 iPhone —— 需要重新签名或越狱环境：
+
+- **Sideloadly / AltStore / SideStore** —— 用你自己的 Apple ID 重签，免费账号 7 天有效，
+  到期重签即可。这是最常用的方式。
+- **TrollStore** —— 支持的 iOS 版本上可以直接安装未签名 IPA，永久有效。
+- **越狱设备** —— 直接装。
+- 想做成正式分发版本，需要 Apple Developer 证书，把 `xcodebuild` 的签名参数换成
+  你自己的 `CODE_SIGN_IDENTITY` / `PROVISIONING_PROFILE_SPECIFIER` 即可。
+
+### iOS 侧做了什么
+
+- `capacitor.config.ts` —— `contentInset: 'never'`，布局完全交给 CSS 的 `100dvh`；
+  `styles.css` 用 `env(safe-area-inset-*)` 避开刘海与 Home 指示条。
+- 窄屏输入框字号设为 16px，避免 iOS 聚焦时自动放大页面。
+- `Info.plist` —— 桌面名称 `梭哈`、`arm64`、`ITSAppUsesNonExemptEncryption = false`、
+  浅色状态栏。
+- `assets/icon.svg` / `assets/splash.svg` 用无头 Chrome 渲染成 PNG
+  （`scripts/make-icons.mjs`），不需要任何图形工具链。
+
+> Capacitor 模板会把同一张 2732×2732 启动图当作 1x/2x/3x 塞三份（5.4 MB 完全相同的像素）。
+> 这里改成单尺度 imageset + 2048×2048 一张，配合关掉 sourcemap，`.ipa` 从 9.1 MB 降到 5.7 MB。
 
 ---
 
