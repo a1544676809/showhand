@@ -533,9 +533,16 @@ select {
 
 /* ------------------------------------------------------------------- seat */
 
+/*
+ * Seats are anchored by their INNER edge, not centred on the ellipse point.
+ * Centring meant a seat carrying five cards stretched half its height above the
+ * anchor, so the top seat's nameplate landed on the topbar and the bottom seat's
+ * on the action bar. Growing inward from the anchor keeps every seat inside the
+ * board whatever its content.
+ */
 .seat {
   position: absolute;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -100%);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -556,11 +563,12 @@ select {
 }
 
 /* Hands grow toward the middle of the table: seats in the upper half hang their
-   cards below the nameplate, seats in the lower half stack them above. Without
-   this the bottom player's hand collides with the players either side of them.
-   DOM order is [cards, info], so reversing gives [info, cards]. */
+   cards below the nameplate, seats in the lower half stack them above. DOM order
+   is [controls, cards, info], so reversing puts the plate first and the controls
+   innermost in both cases. */
 .seat.cards-below {
   flex-direction: column-reverse;
+  transform: translate(-50%, 0);
 }
 
 /* Plate, bet chip and status badge travel together. */
@@ -728,26 +736,14 @@ select {
   white-space: nowrap;
 }
 
-/* Per-seat action buttons. They sit on the *outside* of the seat — away from
-   the middle of the table — so they never collide with the hand. */
+/* Per-seat action buttons. They are the first child of the seat, so with the
+   hand growing inward they always end up on the inside edge — next to the
+   nameplate and never overhanging the board. */
 .seat-controls {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
   display: flex;
   gap: 4px;
   z-index: 4;
   animation: fade-in 0.15s ease-out;
-}
-
-.seat:not(.cards-below) > .seat-controls {
-  bottom: 100%;
-  margin-bottom: 4px;
-}
-
-.seat.cards-below > .seat-controls {
-  top: 100%;
-  margin-top: 4px;
 }
 
 .seat-ctl {
@@ -1565,6 +1561,37 @@ input[type='range']::-moz-range-thumb {
 .ai-cell {
   display: flex;
   justify-content: flex-end;
+}
+
+/* Per-seat controller switch on the setup screen, so the mix of human and AI
+   seats is decided before the table starts rather than mid-hand. */
+.ctl-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--blue) 34%, transparent);
+  background: color-mix(in srgb, var(--blue) 14%, transparent);
+  color: var(--blue);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.ctl-toggle:hover {
+  background: color-mix(in srgb, var(--blue) 24%, transparent);
+}
+
+.ctl-toggle.human {
+  border-color: color-mix(in srgb, var(--gold) 40%, transparent);
+  background: var(--gold-soft);
+  color: var(--gold);
+}
+
+.ctl-toggle.human:hover {
+  background: color-mix(in srgb, var(--gold) 26%, transparent);
 }
 
 .text-input.mono {

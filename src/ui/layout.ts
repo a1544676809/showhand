@@ -79,9 +79,12 @@ export interface FanBlock {
 }
 
 /**
- * Bounding boxes of every seat's hand, in table-box pixels. Hands sit *below*
- * the nameplate for seats in the upper half and *above* it for seats in the
- * lower half, so the block edges depend on which side of the table we are on.
+ * Bounding boxes of every seat's hand, in table-box pixels.
+ *
+ * Seats are anchored by their inner edge (see `.seat` in styles.css): a seat in
+ * the upper half starts *at* its ellipse point and grows downward, one in the
+ * lower half ends there and grows upward. So each block runs from the anchor to
+ * `plateReach + cardHeight` inward — never the other side of it.
  */
 export function fanBlocks(
   tableWidth: number,
@@ -92,8 +95,9 @@ export function fanBlocks(
   cardWidth: number,
   heroCardWidth = 0,
 ): FanBlock[] {
-  // Nameplate + gap + room for the status badge under it.
-  const plateReach = 54
+  // Nameplate + gap + status badge. The seat buttons sit further in and are
+  // only present in director mode, so they are not counted.
+  const plateReach = 52
 
   return Array.from({ length: playerCount }, (_, i) => {
     const angle = Math.PI / 2 + (i * 2 * Math.PI) / playerCount
@@ -106,15 +110,15 @@ export function fanBlocks(
     // is not fanned, so it is five full card widths plus the gaps between them.
     const isHero = heroCardWidth > 0 && i === 0
     const width = isHero ? heroCardWidth : cardWidth
-    const cardHeight = width * 1.4
+    const reach = plateReach + width * 1.4
     const half = isHero ? (FAN_LENGTH * width + 12) / 2 : (FAN_SPAN / 2) * width
 
-    const above = yPercent > 55
+    const growsDown = yPercent <= 55
     return {
       left: x - half,
       right: x + half,
-      top: above ? y - plateReach - cardHeight : y + plateReach,
-      bottom: above ? y - plateReach : y + plateReach + cardHeight,
+      top: growsDown ? y : y - reach,
+      bottom: growsDown ? y + reach : y,
       name: `seat${i}`,
     }
   })

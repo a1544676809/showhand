@@ -324,6 +324,19 @@ export default function App() {
 
           {handFinished && <ResultBand state={state} />}
 
+          {/* Above the betting bar, so the bar itself is flush with the bottom
+              of the screen where the thumbs are. */}
+          <div className="hotkey-hint">
+            快捷键：<b>F</b> 弃牌 · <b>C</b> 过牌/跟注 · <b>R</b> 最小加注 · <b>A</b> 梭哈 ·{' '}
+            <b>空格</b> 下一手
+            {manual && (
+              <>
+                {' · '}
+                <b>Enter</b> 下一步
+              </>
+            )}
+          </div>
+
           {showActionBar ? (
             <ActionBar
               state={state}
@@ -353,17 +366,6 @@ export default function App() {
               </span>
             </div>
           )}
-
-          <div className="hotkey-hint">
-            快捷键：<b>F</b> 弃牌 · <b>C</b> 过牌/跟注 · <b>R</b> 最小加注 · <b>A</b> 梭哈 ·{' '}
-            <b>空格</b> 下一手
-            {manual && (
-              <>
-                {' · '}
-                <b>Enter</b> 下一步
-              </>
-            )}
-          </div>
         </main>
 
         <aside className="side-panel">

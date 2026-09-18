@@ -186,6 +186,53 @@ async function main() {
       return true
     }
 
+    /**
+     * Seats are anchored by their inner edge, so a seat carrying five cards must
+     * still finish inside the board. Centring them used to push the top seat's
+     * nameplate onto the topbar and the bottom seat's onto the betting bar.
+     */
+    const assertSeatsClearOfChrome = async (label) => {
+      const m = await cdp.eval(`(() => {
+        const wrap = document.querySelector('.table-wrap');
+        const board = wrap ? wrap.getBoundingClientRect() : null;
+        const topbar = document.querySelector('.topbar');
+        const bar = document.querySelector('.actionbar, .step-bar');
+        return {
+          board: board ? { top: board.top, bottom: board.bottom } : null,
+          topbarBottom: topbar ? topbar.getBoundingClientRect().bottom : 0,
+          barTop: bar ? bar.getBoundingClientRect().top : window.innerHeight,
+          seats: [...document.querySelectorAll('.seat')].map((el) => {
+            const r = el.getBoundingClientRect();
+            return {
+              name: (el.querySelector('.seat-name') || {}).textContent || '?',
+              top: r.top,
+              bottom: r.bottom,
+            };
+          }),
+        };
+      })()`)
+      if (!m.board) {
+        errors.push(`${label}: no board rendered`)
+        return
+      }
+      let bad = 0
+      for (const s of m.seats) {
+        if (s.top < m.topbarBottom - 1) {
+          errors.push(
+            `${label}: seat ${s.name} overlaps the topbar by ${Math.round(m.topbarBottom - s.top)}px`,
+          )
+          bad++
+        }
+        if (s.bottom > m.barTop + 1) {
+          errors.push(
+            `${label}: seat ${s.name} overlaps the betting bar by ${Math.round(s.bottom - m.barTop)}px`,
+          )
+          bad++
+        }
+      }
+      if (!bad) log(`${label}: ${m.seats.length} seat(s) clear of the topbar and betting bar`)
+    }
+
     /** How many hole cards are currently face up, per seat index. */
     const peekState = () =>
       cdp.eval(`(() => [...document.querySelectorAll('.seat')].map((seat) => {
@@ -256,6 +303,7 @@ async function main() {
     await passGate()
     await capture('02-table-hotseat')
     await assertNoPageScroll('table 1680x1050')
+    await assertSeatsClearOfChrome('table 1680x1050')
 
     // 3 — five-handed hot-seat with the privacy gate visible
     await goto(`${BASE}/?quick=hotseat&seats=5&speed=1&seed=demo-b`)
@@ -359,6 +407,7 @@ async function main() {
     await passGate()
     await capture('10-mobile')
     await assertNoPageScroll('table 430x900')
+    await assertSeatsClearOfChrome('table 430x900')
 
     await setViewport(1366, 768)
     await goto(`${BASE}/?quick=hotseat&seats=5&speed=2&seed=demo-h`)
@@ -366,6 +415,7 @@ async function main() {
     await passGate()
     await capture('11-laptop-1366')
     await assertNoPageScroll('table 1366x768')
+    await assertSeatsClearOfChrome('table 1366x768')
 
     // 12-14 — iPad, which is 4:3 in both orientations.
     await setViewport(1366, 1024)
@@ -374,6 +424,7 @@ async function main() {
     await passGate()
     await capture('12-ipad-landscape-4x3')
     await assertNoPageScroll('iPad landscape 1366x1024')
+    await assertSeatsClearOfChrome('iPad landscape 1366x1024')
 
     await setViewport(1024, 768)
     await goto(`${BASE}/?quick=hotseat&seats=5&speed=2&seed=demo-h`)
@@ -381,6 +432,7 @@ async function main() {
     await passGate()
     await capture('13-ipad-1024x768')
     await assertNoPageScroll('iPad 1024x768')
+    await assertSeatsClearOfChrome('iPad 1024x768')
 
     await setViewport(810, 1080)
     await goto(`${BASE}/?quick=hotseat&seats=4&speed=2&seed=demo-j`)
@@ -388,6 +440,7 @@ async function main() {
     await passGate()
     await capture('14-ipad-portrait-4x3')
     await assertNoPageScroll('iPad portrait 810x1080')
+    await assertSeatsClearOfChrome('iPad portrait 810x1080')
 
     // 15 — the director can bet for whichever seat is on turn. Step through the
     // deal, then confirm the betting bar targets that seat and actually works.
@@ -449,37 +502,48 @@ async function main() {
       else log(`god mode: director pressed "${acted}" and the engine accepted it`)
     }
 
-    // 16+ — light theme
+    // Narrow and tall: the shape that exposed the seat-anchoring bug.
+    await setViewport(350, 1127, true)
+    await goto(`${BASE}/?quick=god&seats=3&seed=demo-m`)
+    await sleep(1800)
+    for (let i = 0; i < 8; i++) await clickText('翻出下一张')
+    await sleep(400)
+    await capture('16-narrow-tall-350x1127')
+    await assertNoPageScroll('narrow 350x1127')
+    await assertSeatsClearOfChrome('narrow 350x1127')
+
+    // 17+ — light theme
     await setViewport(1680, 1050)
     await setTheme('light')
     await goto(`${BASE}/`)
     await sleep(500)
-    await capture('16-light-setup')
+    await capture('17-light-setup')
     await goto(`${BASE}/?quick=god&seats=5&speed=4&seed=demo-f`)
     await sleep(6500)
-    await capture('17-light-table')
+    await capture('18-light-table')
     await assertNoPageScroll('light table 1680x1050')
     const lightTheme = await cdp.eval(`document.documentElement.dataset.theme`)
     if (lightTheme !== 'light') errors.push(`expected light theme for light capture, got ${lightTheme}`)
 
     await clickText('复制战况')
     await sleep(700)
-    await capture('18-light-summary')
+    await capture('19-light-summary')
     await cdp.eval(
       `[...document.querySelectorAll('button')].find(b=>b.textContent.includes('关闭'))?.click()`,
     )
     await sleep(400)
     await clickText('规则')
     await sleep(600)
-    await capture('19-light-rules')
+    await capture('20-light-rules')
 
     await setViewport(430, 900, true)
     await setTheme('light')
     await goto(`${BASE}/?quick=hotseat&seats=3&speed=2&seed=demo-e`)
     await sleep(3000)
     await passGate()
-    await capture('20-light-mobile')
+    await capture('21-light-mobile')
     await assertNoPageScroll('light mobile 430x900')
+    await assertSeatsClearOfChrome('light mobile 430x900')
 
     // DOM-level invariants on the god view: every rendered card face must be
     // unique, and no seat may show more than five cards.

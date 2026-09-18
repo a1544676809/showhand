@@ -200,7 +200,7 @@ export function SetupScreen({
                 <span>标识符（可选）</span>
                 <span>筹码</span>
                 <span>筹码记录</span>
-                <span />
+                <span>控制</span>
               </div>
               {seats.map((seat, index) => {
                 const id = seat.playerId.trim()
@@ -237,13 +237,17 @@ export function SetupScreen({
                     <span className={`bank-cell${entry ? ' saved' : ''}`}>
                       {id ? (entry ? describeEntry(entry) : '— 尚未记录') : '不记录'}
                     </span>
-                    <span className="ai-cell">
-                      {seat.isBot ? (
-                        <span className="seat-bot-tag">AI</span>
-                      ) : (
-                        <span className="seat-you-tag">真人</span>
-                      )}
-                    </span>
+                    <button
+                      className={`ctl-toggle${seat.isBot ? '' : ' human'}`}
+                      onClick={() => patchSeat(index, { isBot: !seat.isBot })}
+                      title={
+                        seat.isBot
+                          ? 'AI 控制 —— 点击改为真人控制'
+                          : '真人控制 —— 点击改为 AI 控制'
+                      }
+                    >
+                      {seat.isBot ? '🤖 AI' : '🧑 真人'}
+                    </button>
                   </div>
                 )
               })}

@@ -109,6 +109,32 @@ function Seat({
         ['--card-h' as string]: `${cardHeight}px`,
       }}
     >
+      {showControls && (
+        <div className="seat-controls">
+          <button
+            className={`seat-ctl${player.isBot ? '' : ' on'}`}
+            onClick={onToggleBot}
+            title={player.isBot ? '改为真人控制' : '改为 AI 控制'}
+          >
+            {player.isBot ? '🤖' : '🧑'}
+          </button>
+          <button
+            className={`seat-ctl${isPeeked ? ' on' : ''}`}
+            onClick={onTogglePeek}
+            title={isPeeked ? '隐藏该玩家的底牌' : '观看该玩家的底牌'}
+          >
+            {isPeeked ? '🙈' : '👁'}
+          </button>
+          <button
+            className="seat-ctl"
+            onClick={onCopyPerspective}
+            title={`直接复制以 ${player.name} 视角的局面（对家底牌会被隐藏）`}
+          >
+            📋
+          </button>
+        </div>
+      )}
+
       <div className="seat-cards">
         {hole !== undefined && (
           <PlayingCard
@@ -176,32 +202,6 @@ function Seat({
           <div className="seat-badge action">{player.lastActionLabel}</div>
         )}
       </div>
-
-      {showControls && (
-        <div className="seat-controls">
-          <button
-            className={`seat-ctl${player.isBot ? '' : ' on'}`}
-            onClick={onToggleBot}
-            title={player.isBot ? '改为真人控制' : '改为 AI 控制'}
-          >
-            {player.isBot ? '🤖' : '🧑'}
-          </button>
-          <button
-            className={`seat-ctl${isPeeked ? ' on' : ''}`}
-            onClick={onTogglePeek}
-            title={isPeeked ? '隐藏该玩家的底牌' : '观看该玩家的底牌'}
-          >
-            {isPeeked ? '🙈' : '👁'}
-          </button>
-          <button
-            className="seat-ctl"
-            onClick={onCopyPerspective}
-            title={`直接复制以 ${player.name} 视角的局面（对家底牌会被隐藏）`}
-          >
-            📋
-          </button>
-        </div>
-      )}
     </div>
   )
 }
