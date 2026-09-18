@@ -166,9 +166,17 @@ const PROBE = `(() => {
     }
   }
 
+  const cardBox = (sel) => {
+    const el = document.querySelector(sel);
+    return el ? box(el) : null;
+  };
+
   return {
     viewport: { w: innerWidth, h: innerHeight },
     chrome,
+    // The two card sizes the solver picked, measured off the DOM.
+    heroCard: cardBox('.seat.is-you .card') || cardBox('.seat .card'),
+    otherCard: cardBox('.seat:not(.is-you) .card') || cardBox('.seat .card'),
     board: bb,
     boardRatio: bb ? +(bb.w / bb.h).toFixed(3) : null,
     felt: box(felt),
@@ -327,6 +335,9 @@ try {
       `board      ${report.board?.w}x${report.board?.h}  ratio ${report.boardRatio}  top ${report.board?.top}`,
     )
     console.log(`pot        ${report.pot ? `${report.pot.w}x${report.pot.h} @ y${report.pot.top}` : 'n/a'}`)
+    console.log(
+      `cards      hero ${report.heroCard?.w ?? '?'}x${report.heroCard?.h ?? '?'}   others ${report.otherCard?.w ?? '?'}x${report.otherCard?.h ?? '?'}`,
+    )
     console.log(`scrollY    ${report.scroll.y}`)
     console.log('')
     for (const [sel, b] of Object.entries(report.chrome ?? {})) {
