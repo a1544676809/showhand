@@ -100,6 +100,14 @@ const PROBE = `(() => {
   const bb = box(board);
   const centerY = bb ? bb.top + bb.h / 2 : 0;
 
+  // Where the shell puts its furniture: the table is centred inside the stage,
+  // so a wide window plus a fixed sidebar can leave the felt looking off-centre.
+  const chrome = {};
+  for (const sel of ['.topbar', '.stage', '.actionbar, .step-bar', '.log', '.log-panel', '.sidebar']) {
+    const el = document.querySelector(sel);
+    if (el) chrome[sel] = box(el);
+  }
+
   /*
    * A seat is only laid out correctly when it grows INWARD from its nameplate:
    * the plate hugs the rail, the hand reaches toward the middle, and the seat
@@ -125,6 +133,7 @@ const PROBE = `(() => {
 
   return {
     viewport: { w: innerWidth, h: innerHeight },
+    chrome,
     board: bb,
     boardRatio: bb ? +(bb.w / bb.h).toFixed(3) : null,
     felt: box(felt),
@@ -223,6 +232,10 @@ try {
     )
     console.log(`pot        ${report.pot ? `${report.pot.w}x${report.pot.h} @ y${report.pot.top}` : 'n/a'}`)
     console.log(`scrollY    ${report.scroll.y}`)
+    console.log('')
+    for (const [sel, b] of Object.entries(report.chrome ?? {})) {
+      console.log(`  chrome ${sel.padEnd(24)} x ${b.left}..${b.right}  y ${b.top}..${b.bottom}`)
+    }
     console.log('')
     console.log('  seat            half    flexDir    info y      cards y     ctrls y     flags')
     for (const s of report.seats) {
