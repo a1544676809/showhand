@@ -246,7 +246,8 @@ export function Table({
     heroCardWidth: hero,
     otherCardWidth: other,
     uiScale,
-  } = computeBoardMetrics(width, height, playerCount)
+    potScale,
+  } = computeBoardMetrics(width, height, playerCount, showSeatControls)
   const ratio = 1.4
 
   if (width <= 0) return <div className="table-wrap" />
@@ -262,6 +263,7 @@ export function Table({
         // keeps the nameplates and the pot in proportion with the cards on a
         // large display instead of leaving them microscopic on a huge felt.
         ['--ui-scale' as string]: String(uiScale),
+        ['--pot-scale' as string]: String(potScale),
         ['--card-w' as string]: `${other}px`,
         ['--card-h' as string]: `${Math.round(other * ratio)}px`,
       }}

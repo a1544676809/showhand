@@ -122,12 +122,131 @@ export interface FanBlock {
 }
 
 /**
+ * Vertical budget a seat spends between its anchor and its first card, in
+ * design pixels (i.e. at `--ui-scale` 1). These mirror styles.css exactly; if
+ * the CSS changes, these must follow or the solver silently overlaps seats.
+ *
+ *   .seat-info    plate + gap + status badge            -> SEAT_PLATE_REACH
+ *   .seat         gap between rows                      -> SEAT_GAP
+ *   .seat-controls per-seat buttons, only when shown    -> SEAT_BUTTONS_REACH
+ *   .seat-cards   min-height: calc(--card-h + 4px)      -> CARD_BOX_EXTRA
+ *
+ * The seat buttons are a *separate row* between the plate and the hand, and
+ * were missing from this budget entirely — which is why two heads-up seats
+ * overlapped by 30px at 1280x650 the moment the buttons were shown. They cost
+ * nothing when hidden, so the reserve is conditional.
+ */
+export const SEAT_PLATE_REACH = 53
+export const SEAT_GAP = 5
+export const SEAT_BUTTONS_REACH = 26
+export const CARD_BOX_EXTRA = 4
+/**
+ * Slop for the browser's own rounding.
+ *
+ * `Table.tsx` renders `cardHeight = round(cardWidth * 1.4)` while the model
+ * uses the unrounded product, so a real seat can be a fraction of a pixel
+ * taller than modelled. At 1400x850 that was enough to leave two side seats
+ * clipping by 1px after the solver had declared the board clean.
+ */
+export const SEAT_REACH_SLACK = 2
+
+/** Everything above the hand: plate, badge and — when shown — the button row. */
+export function plateReachFor(cardWidth: number, seatControls: boolean): number {
+  const rows = SEAT_PLATE_REACH + SEAT_GAP + (seatControls ? SEAT_BUTTONS_REACH + SEAT_GAP : 0)
+  return rows * uiScaleFor(cardWidth) + SEAT_REACH_SLACK
+}
+
+/**
+ * Half-height and half-width of the pot's reserved block, in design pixels.
+ *
+ * The pot sits dead centre, and for heads-up both hands are centred on the same
+ * axis, so without this the two rows met in the middle *on top of the pot* —
+ * the pot ended up completely hidden behind the cards. Measured against the
+ * rendered pot (65px tall at scale 1) with a few pixels of clearance.
+ */
+export const POT_HALF_HEIGHT = 38
+/**
+ * Deliberately tight. The pot's rendered box is ~51px wide at scale 1, and the
+ * width only decides *whether* the vertical constraint applies to a seat. A
+ * generous value made the reserve reach the side seats of a 410px phone, which
+ * clip it by a few pixels and then had their cards halved for no visible gain.
+ */
+export const POT_HALF_WIDTH = 30
+
+/**
+ * Table height at which the pot is drawn at full size.
+ *
+ * The pot's amount used `clamp(20px, 2.6vw, 30px)`, which keys off the
+ * *viewport*: on a short window it stayed 30px tall while the table shrank, so
+ * its reserved lane was a huge slice of a 430px-tall felt and squeezed the
+ * cards down to ~30px. Tying it to the table instead keeps the proportion.
+ */
+export const POT_REFERENCE_HEIGHT = 900
+export const MIN_POT_SCALE = 0.62
+
+export function potScaleFor(cardWidth: number, tableHeight: number): number {
+  const heightFactor = clamp(tableHeight / POT_REFERENCE_HEIGHT, MIN_POT_SCALE, 1)
+  return uiScaleFor(cardWidth) * heightFactor
+}
+
+/** The pot's exclusion box, so a fan can be kept off it like any other seat. */
+export function potBlock(tableWidth: number, tableHeight: number, cardWidth: number): FanBlock {
+  const scale = potScaleFor(cardWidth, tableHeight)
+  const halfH = POT_HALF_HEIGHT * scale
+  const halfW = POT_HALF_WIDTH * scale
+  const cx = tableWidth / 2
+  const cy = tableHeight / 2
+  return {
+    left: cx - halfW,
+    right: cx + halfW,
+    top: cy - halfH,
+    bottom: cy + halfH,
+    name: 'pot',
+  }
+}
+
+/**
+ * Every fan plus the pot, as one list.
+ *
+ * `fansCollide` is a plain pairwise AABB test, so folding the pot in as one
+ * more block means a single call enforces both "seats must not overlap each
+ * other" and "no hand may cover the pot".
+ */
+export function boardBlocks(
+  tableWidth: number,
+  tableHeight: number,
+  playerCount: number,
+  rx: number,
+  ry: number,
+  cardWidth: number,
+  heroCardWidth = 0,
+  seatControls = false,
+): FanBlock[] {
+  return [
+    ...fanBlocks(
+      tableWidth,
+      tableHeight,
+      playerCount,
+      rx,
+      ry,
+      cardWidth,
+      heroCardWidth,
+      seatControls,
+    ),
+    potBlock(tableWidth, tableHeight, cardWidth),
+  ]
+}
+
+/**
  * Bounding boxes of every seat's hand, in table-box pixels.
  *
  * Seats are anchored by their inner edge (see `.seat` in styles.css): a seat in
  * the upper half starts *at* its ellipse point and grows downward, one in the
  * lower half ends there and grows upward. So each block runs from the anchor to
  * `plateReach + cardHeight` inward — never the other side of it.
+ *
+ * Use `boardBlocks` rather than this when solving: it folds the pot in as one
+ * more obstacle.
  */
 export function fanBlocks(
   tableWidth: number,
@@ -137,12 +256,8 @@ export function fanBlocks(
   ry: number,
   cardWidth: number,
   heroCardWidth = 0,
+  seatControls = false,
 ): FanBlock[] {
-  // Nameplate + gap + status badge. The seat buttons sit further in and are
-  // only present in director mode, so they are not counted. The plate grows
-  // with `--ui-scale`, so this budget has to follow the card width.
-  const plateReach = 52
-
   return Array.from({ length: playerCount }, (_, i) => {
     const angle = Math.PI / 2 + (i * 2 * Math.PI) / playerCount
     const xPercent = 50 + rx * Math.cos(angle)
@@ -154,7 +269,8 @@ export function fanBlocks(
     // is not fanned, so it is five full card widths plus the gaps between them.
     const isHero = heroCardWidth > 0 && i === 0
     const width = isHero ? heroCardWidth : cardWidth
-    const reach = plateReach * uiScaleFor(width) + width * 1.4
+    const reach =
+      plateReachFor(width, seatControls) + width * 1.4 + CARD_BOX_EXTRA
     const half = isHero ? (FAN_LENGTH * width + 12) / 2 : (FAN_SPAN / 2) * width
 
     const growsDown = yPercent <= 55
@@ -189,6 +305,11 @@ export interface BoardMetrics {
   otherCardWidth: number
   /** Multiplier for the table furniture, derived from the card size. */
   uiScale: number
+  /**
+   * Multiplier for the pot specifically. Matches `uiScale` on a tall table but
+   * shrinks on a short one, where a full-size pot would eat the whole middle.
+   */
+  potScale: number
 }
 
 /**
@@ -209,9 +330,10 @@ export function computeBoardMetrics(
   tableWidth: number,
   tableHeight: number,
   playerCount: number,
+  seatControls = false,
 ): BoardMetrics {
   if (tableWidth <= 0 || tableHeight <= 0) {
-    return { rx: 0, ry: 0, heroCardWidth: 0, otherCardWidth: 0, uiScale: 1 }
+    return { rx: 0, ry: 0, heroCardWidth: 0, otherCardWidth: 0, uiScale: 1, potScale: 1 }
   }
 
   // `ry` is a compromise. It tracks the felt's own half-height well enough that
@@ -241,12 +363,30 @@ export function computeBoardMetrics(
   )
 
   // Two seats facing each other need `2 x plateReach` of clear height plus both
-  // hands. On a tiny stage (a 360px phone with four or five seats) that budget
-  // runs out before the cards get small enough — the loop bottoms out at
-  // MIN_CARD and the layout is simply tight. Every realistic size resolves.
+  // hands, and the pot needs its own lane down the middle. On a tiny stage
+  // (a 360px phone with four or five seats) that budget runs out before the
+  // cards get small enough — the loop bottoms out at MIN_CARD and the layout is
+  // simply tight. Every realistic size resolves.
+  //
+  // The anchor seat is modelled at its *widest* — a five-card row, not a fan —
+  // because `heroCardWidth` is never allowed below `otherCardWidth`, so the row
+  // is already that wide at the smallest value this loop can pick. Modelling it
+  // as a fan under-counted it by ~20% and left the side seats clipping the
+  // anchor's row at 1400x850.
   while (
     otherCardWidth > MIN_CARD &&
-    fansCollide(fanBlocks(tableWidth, tableHeight, playerCount, rx, ry, otherCardWidth))
+    fansCollide(
+      boardBlocks(
+        tableWidth,
+        tableHeight,
+        playerCount,
+        rx,
+        ry,
+        otherCardWidth,
+        otherCardWidth,
+        seatControls,
+      ),
+    )
   ) {
     otherCardWidth -= 2
   }
@@ -260,7 +400,16 @@ export function computeBoardMetrics(
   while (
     heroCardWidth > otherCardWidth &&
     fansCollide(
-      fanBlocks(tableWidth, tableHeight, playerCount, rx, ry, otherCardWidth, heroCardWidth),
+      boardBlocks(
+        tableWidth,
+        tableHeight,
+        playerCount,
+        rx,
+        ry,
+        otherCardWidth,
+        heroCardWidth,
+        seatControls,
+      ),
     )
   ) {
     heroCardWidth -= 2
@@ -273,6 +422,7 @@ export function computeBoardMetrics(
     heroCardWidth,
     otherCardWidth,
     uiScale: uiScaleFor(otherCardWidth),
+    potScale: potScaleFor(otherCardWidth, tableHeight),
   }
 }
 

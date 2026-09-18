@@ -89,6 +89,9 @@ const PROBE = `(() => {
     return {
       index: i,
       cls: el.className,
+      // Read the flag the app actually set rather than re-deriving it: this is
+      // inside a template literal, where a \s escape would collapse to "s".
+      cardsBelow: el.classList.contains('cards-below'),
       name: (el.querySelector('.seat-name') || {}).textContent || '',
       flexDirection: getComputedStyle(el).flexDirection,
       box: box(el),
@@ -98,7 +101,6 @@ const PROBE = `(() => {
   });
 
   const bb = box(board);
-  const centerY = bb ? bb.top + bb.h / 2 : 0;
 
   // Where the shell puts its furniture: the table is centred inside the stage,
   // so a wide window plus a fixed sidebar can leave the felt looking off-centre.
@@ -113,10 +115,14 @@ const PROBE = `(() => {
    * the plate hugs the rail, the hand reaches toward the middle, and the seat
    * buttons sit between the two. Getting this backwards is what once parked the
    * buttons on top of the pot.
+   *
+   * The direction comes from the class the app sets (cardsBelow = y <= 55), not
+   * from guessing off the board centre: a four-handed seat sits exactly on the
+   * centre line and would otherwise be misread.
    */
   for (const s of seats) {
     if (!s.info || !s.cards || !s.controls) continue;
-    const upperHalf = (s.info.top + s.info.bottom) / 2 < centerY;
+    const upperHalf = s.cardsBelow;
     s.half = upperHalf ? 'upper' : 'lower';
     const outward =
       s.half === 'upper'
@@ -131,6 +137,35 @@ const PROBE = `(() => {
   const inverted = seats.filter((s) => s.growsInward === false).map((s) => s.name);
   const misplacedControls = seats.filter((s) => s.controlsBesidePlate === false).map((s) => s.name);
 
+  /*
+   * The collision solver in ui/layout.ts works on *modelled* seat blocks. This
+   * measures the boxes the browser actually laid out, which is the only thing
+   * that can catch the model under-counting a row it forgot about.
+   */
+  const collisions = [];
+  let minGap = Infinity;
+  let minGapPair = null;
+  for (let i = 0; i < seats.length; i++) {
+    for (let j = i + 1; j < seats.length; j++) {
+      const a = seats[i].box;
+      const b = seats[j].box;
+      if (!a || !b) continue;
+      if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) {
+        const vOverlap = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+        const hOverlap = Math.min(a.right, b.right) - Math.max(a.left, b.left);
+        collisions.push({ a: seats[i].name, b: seats[j].name, vOverlap, hOverlap });
+      }
+      // Only a purely vertical separation is a usable "breathing room" measure.
+      if (a.left < b.right && b.left < a.right) {
+        const gap = Math.max(a.top, b.top) - Math.min(a.bottom, b.bottom);
+        if (gap < minGap) {
+          minGap = gap;
+          minGapPair = [seats[i].name, seats[j].name];
+        }
+      }
+    }
+  }
+
   return {
     viewport: { w: innerWidth, h: innerHeight },
     chrome,
@@ -142,6 +177,9 @@ const PROBE = `(() => {
     seats,
     inverted,
     misplacedControls,
+    collisions,
+    minGap: Number.isFinite(minGap) ? minGap : null,
+    minGapPair,
     controlsOverPot: seats.filter((s) => s.controlsOverPot).map((s) => s.name),
   };
 })()`
@@ -213,9 +251,67 @@ try {
   }
   if (steps) await sleep(400)
 
+  /*
+   * `--drive N` plays the hand out: it shoves every seat all-in whenever the
+   * betting controls are live, and advances the deal otherwise. That is the
+   * only way to reach the end-of-hand state where every seat shows five cards,
+   * which is the layout's worst case.
+   *
+   * "全下" only drives the slider to the maximum — committing it is a second
+   * click on the wager button, so the loop remembers that it owes one.
+   */
+  const drive = Number(flag('drive', 0))
+  const debugDrive = argv.includes('--debug-drive')
+  if (drive) {
+    const click = (re) =>
+      evaluate(`(() => {
+        const b = [...document.querySelectorAll('button')]
+          .find((n) => !n.disabled && ${re}.test((n.textContent || '').trim()));
+        if (!b) return false;
+        b.click();
+        return true;
+      })()`)
+
+    let owesCommit = false
+    for (let i = 0; i < drive; i++) {
+      let action = null
+      if (owesCommit) {
+        owesCommit = false
+        if (await click('/^(下注|加注到|加注|跟注|过牌)/')) action = 'commit'
+      }
+      if (!action && (await click('/^全下$/')) ) {
+        owesCommit = true
+        action = 'allin'
+      }
+      if (!action && (await click('/翻出下一张|下一步/'))) action = 'step'
+
+      if (!action) {
+        if (debugDrive) {
+          const bar = await evaluate(`(() => {
+            const b = document.querySelector('.actionbar, .step-bar');
+            return b ? b.innerText.replace(/\\n/g, ' | ') : '(no bar)';
+          })()`)
+          console.log(`drive: stuck at step ${i}; bar = ${bar}`)
+        }
+        break
+      }
+      if (debugDrive) console.log(`drive ${i}: ${action}`)
+      await sleep(action === 'allin' ? 140 : 220)
+    }
+    await sleep(900)
+    const dealt = await evaluate(
+      `(() => {
+        const seats = [...document.querySelectorAll('.seat')];
+        return Math.max(0, ...seats.map((s) => s.querySelectorAll('.card').length));
+      })()`,
+    )
+    console.log(`drive: reached ${dealt} cards on the busiest seat`)
+  }
+
   const report = await evaluate(PROBE)
   report.url = url
   report.steps = steps
+  report.drive = drive
 
   mkdirSync(dirname(OUT), { recursive: true })
   const shot = await send('Page.captureScreenshot', { format: 'png' })
@@ -255,11 +351,27 @@ try {
     console.log(`seats growing outward:      ${report.inverted.length ? report.inverted.join(', ') : 'none'}`)
     console.log(`controls off their plate:   ${report.misplacedControls.length ? report.misplacedControls.join(', ') : 'none'}`)
     console.log(`seat controls over the pot: ${report.controlsOverPot.length ? report.controlsOverPot.join(', ') : 'none'}`)
+    console.log(
+      `seats overlapping:          ${
+        report.collisions.length
+          ? report.collisions.map((c) => `${c.a}/${c.b} (v${c.vOverlap} h${c.hOverlap})`).join(', ')
+          : 'none'
+      }`,
+    )
+    console.log(
+      `smallest vertical gap:      ${report.minGap === null ? 'n/a' : `${report.minGap}px`}${
+        report.minGapPair ? ` (${report.minGapPair.join(' / ')})` : ''
+      }`,
+    )
     console.log(`screenshot: ${OUT}`)
   }
 
   const bad =
-    report.inverted.length + report.misplacedControls.length + report.controlsOverPot.length + (report.scroll.y > 0 ? 1 : 0)
+    report.inverted.length +
+    report.misplacedControls.length +
+    report.controlsOverPot.length +
+    report.collisions.length +
+    (report.scroll.y > 0 ? 1 : 0)
   process.exitCode = bad ? 1 : 0
 } finally {
   try {

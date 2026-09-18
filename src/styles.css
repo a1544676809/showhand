@@ -82,6 +82,9 @@
      and the badges grow with the cards. Without it a 2560px display drew 96px
      cards on a 1120px-tall felt with a 30px pot, and the table read as empty. */
   --ui-scale: 1;
+  /* The pot tracks the table's height as well as the cards: a full-size pot on
+     a short window would take the whole middle and squeeze the cards. */
+  --pot-scale: 1;
 
   /* Shell padding, plus the iOS notch / home-indicator insets. `env()` is 0
      everywhere else, so the browser build is unaffected. */
@@ -513,7 +516,7 @@ select {
   content: '';
   position: absolute;
   z-index: -1;
-  inset: calc(-26px * var(--ui-scale)) calc(-46px * var(--ui-scale));
+  inset: calc(-26px * var(--pot-scale)) calc(-46px * var(--pot-scale));
   border-radius: 50%;
   background: radial-gradient(
     ellipse at center,
@@ -525,14 +528,14 @@ select {
 }
 
 .pot-label {
-  font-size: calc(9.5px * var(--ui-scale));
+  font-size: calc(9.5px * var(--pot-scale));
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--felt-label);
 }
 
 .pot-amount {
-  font-size: calc(clamp(20px, 2.6vw, 30px) * var(--ui-scale));
+  font-size: calc(clamp(20px, 2.6vw, 30px) * var(--pot-scale));
   font-weight: 750;
   font-variant-numeric: tabular-nums;
   color: var(--gold);
@@ -542,15 +545,15 @@ select {
 
 .pot-breakdown {
   display: flex;
-  gap: calc(6px * var(--ui-scale));
+  gap: calc(6px * var(--pot-scale));
   flex-wrap: wrap;
   justify-content: center;
-  font-size: calc(10.5px * var(--ui-scale));
+  font-size: calc(10.5px * var(--pot-scale));
   color: var(--felt-sub);
 }
 
 .pot-chip {
-  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
+  padding: calc(2px * var(--pot-scale)) calc(8px * var(--pot-scale));
   border-radius: 99px;
   background: var(--felt-chip-bg);
   border: 1px solid var(--felt-chip-line);
