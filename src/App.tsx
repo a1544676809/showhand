@@ -96,8 +96,8 @@ export default function App() {
   const { state, setup, perspective, peekedSeats, anchorSeat, exportPerspective, speed } = controller
 
   const tableSize = useMemo(
-    () => computeTableSize(stageSize.width, stageSize.height),
-    [stageSize.width, stageSize.height],
+    () => computeTableSize(stageSize.width, stageSize.height, state?.players.length ?? 5),
+    [stageSize.width, stageSize.height, state?.players.length],
   )
 
   const legal = useMemo(

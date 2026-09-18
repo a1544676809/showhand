@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest'
 import {
   FAN_SPAN,
   MAX_CARD,
+  MAX_HERO_CARD,
   MAX_TABLE_RATIO,
+  MAX_UI_SCALE,
   MIN_CARD,
   MIN_TABLE_RATIO,
   TABLE_RATIO,
@@ -83,12 +85,25 @@ describe('tableRatioFor', () => {
 
   it('uses the whole stage instead of leaving dead space', () => {
     for (const [label, w, h] of STAGES) {
-      const { width, height } = computeTableSize(w, h)
-      // The table should touch whichever axis is binding.
-      const fillsWidth = Math.abs(width - w) < 0.5
-      const fillsHeight = Math.abs(height - h) < 0.5
-      expect(fillsWidth || fillsHeight, `${label} leaves dead space`).toBe(true)
+      for (let players = 2; players <= 5; players++) {
+        const { width, height } = computeTableSize(w, h, players)
+        // The table should touch whichever axis is binding.
+        const fillsWidth = Math.abs(width - w) < 0.5
+        const fillsHeight = Math.abs(height - h) < 0.5
+        expect(fillsWidth || fillsHeight, `${label} / ${players}p leaves dead space`).toBe(true)
+      }
     }
+  })
+
+  it('keeps few-player tables from becoming a mostly empty oval', () => {
+    // A heads-up game on an ultrawide stage must not stretch to the full width.
+    const heads = computeTableSize(2200, 700, 2)
+    expect(heads.height).toBeCloseTo(700, 0)
+    expect(heads.width).toBeLessThan(900)
+
+    // Five seats still get the full landscape ratio.
+    const full = computeTableSize(2200, 700, 5)
+    expect(full.width).toBeGreaterThan(heads.width)
   })
 })
 
@@ -139,7 +154,32 @@ describe('computeBoardMetrics', () => {
         expect(m.otherCardWidth).toBeGreaterThanOrEqual(MIN_CARD)
         expect(m.otherCardWidth).toBeLessThanOrEqual(MAX_CARD)
         expect(m.heroCardWidth).toBeGreaterThanOrEqual(m.otherCardWidth)
-        expect(m.heroCardWidth).toBeLessThanOrEqual(108)
+        expect(m.heroCardWidth).toBeLessThanOrEqual(MAX_HERO_CARD)
+      }
+    }
+  })
+
+  it('grows the cards to fill a large display', () => {
+    // Heads-up on a 2560x1299 monitor: the stage is ~2300x1120, so the table is
+    // height-bound at ~1290x1120. The old 96px ceiling was the binding
+    // constraint here, which left a 1120px-tall felt holding two small hands.
+    const { width, height } = computeTableSize(2300, 1121, 2)
+    const m = computeBoardMetrics(width, height, 2)
+    expect(m.otherCardWidth).toBeGreaterThan(120)
+    expect(m.uiScale).toBeGreaterThan(1.2)
+    // Still collision-free at the larger size, or the table would be unusable.
+    expect(fansCollide(fanBlocks(width, height, 2, m.rx, m.ry, m.otherCardWidth))).toBe(false)
+  })
+
+  it('keeps the chrome at its design size on small stages', () => {
+    // `--ui-scale` must never drop below 1: the phone layouts are verified at 1
+    // and shrinking the nameplates would undo the touch-target work.
+    for (const [label, stageW, stageH] of STAGES) {
+      for (let players = 2; players <= 5; players++) {
+        const { width, height } = computeTableSize(stageW, stageH)
+        const m = computeBoardMetrics(width, height, players)
+        expect(m.uiScale, `${label} / ${players}p`).toBeGreaterThanOrEqual(1)
+        expect(m.uiScale).toBeLessThanOrEqual(MAX_UI_SCALE)
       }
     }
   })
@@ -160,7 +200,7 @@ describe('computeBoardMetrics', () => {
 
   it('handles the zero-size first paint', () => {
     const m = computeBoardMetrics(0, 0, 5)
-    expect(m).toEqual({ rx: 0, ry: 0, heroCardWidth: 0, otherCardWidth: 0 })
+    expect(m).toEqual({ rx: 0, ry: 0, heroCardWidth: 0, otherCardWidth: 0, uiScale: 1 })
   })
 
   it('places seats inside the box for every player count', () => {

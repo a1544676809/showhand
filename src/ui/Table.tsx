@@ -240,17 +240,32 @@ export function Table({
 }: TableProps) {
   const anchorSeat = state.players[anchor] ? anchor : 0
   const playerCount = state.players.length
-  const { rx, ry, heroCardWidth: hero, otherCardWidth: other } = computeBoardMetrics(
-    width,
-    height,
-    playerCount,
-  )
+  const {
+    rx,
+    ry,
+    heroCardWidth: hero,
+    otherCardWidth: other,
+    uiScale,
+  } = computeBoardMetrics(width, height, playerCount)
   const ratio = 1.4
 
   if (width <= 0) return <div className="table-wrap" />
 
   return (
-    <div className="table-wrap" style={{ width, height }}>
+    <div
+      className="table-wrap"
+      style={{
+        width,
+        height,
+        // The pot and the table furniture live outside any seat, so the card
+        // metrics have to be published here rather than per seat. `--ui-scale`
+        // keeps the nameplates and the pot in proportion with the cards on a
+        // large display instead of leaving them microscopic on a huge felt.
+        ['--ui-scale' as string]: String(uiScale),
+        ['--card-w' as string]: `${other}px`,
+        ['--card-h' as string]: `${Math.round(other * ratio)}px`,
+      }}
+    >
       <div className="table-rail">
         <div className="table-felt">
           <div className="pot">

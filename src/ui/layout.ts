@@ -40,9 +40,24 @@ export interface TableSize {
   height: number
 }
 
-export function computeTableSize(stageWidth: number, stageHeight: number): TableSize {
+/**
+ * Fewer seats need less width. Two players sit above and below each other, so a
+ * 16:10 oval leaves two thirds of the felt empty and makes the cards look small
+ * against it; a squarer table suits heads-up better.
+ */
+export function maxRatioForPlayers(playerCount: number): number {
+  if (playerCount <= 2) return 1.15
+  if (playerCount === 3) return 1.4
+  return MAX_TABLE_RATIO
+}
+
+export function computeTableSize(
+  stageWidth: number,
+  stageHeight: number,
+  playerCount = 5,
+): TableSize {
   if (stageWidth <= 0 || stageHeight <= 0) return { width: 0, height: 0 }
-  const ratio = tableRatioFor(stageWidth, stageHeight)
+  const ratio = Math.min(tableRatioFor(stageWidth, stageHeight), maxRatioForPlayers(playerCount))
   const width = Math.min(stageWidth, stageHeight * ratio)
   return { width, height: width / ratio }
 }
@@ -57,8 +72,36 @@ export const FAN_SPAN = (FAN_LENGTH - 1) * FAN_STEP + 1
 const FAN_FILL = 0.94
 /** Smallest card the solver will shrink to before giving up. */
 export const MIN_CARD = 22
-/** Largest card, so the board never looks like a pile of posters. */
-export const MAX_CARD = 96
+/**
+ * Largest card, so the board never looks like a pile of posters.
+ *
+ * This used to be 96, which turned out to be the *binding* constraint on a
+ * large display: heads-up on a 2560px monitor has ~640px of clear room either
+ * side of the centre line yet still drew 96px cards inside a 1120px-tall felt,
+ * so the table read as a huge empty oval. The collision solver below still
+ * shrinks cards on cramped stages, so raising the ceiling only affects screens
+ * that genuinely have the room.
+ */
+export const MAX_CARD = 176
+/** The anchor seat shows five cards in a row, so it may run slightly larger. */
+export const MAX_HERO_CARD = 190
+
+/**
+ * Card width the chrome was drawn against: nameplates, the pot and the badges
+ * all read correctly at this size. `--ui-scale` is 1 here and grows above it.
+ */
+export const CHROME_CARD = 96
+export const MAX_UI_SCALE = 1.7
+
+/**
+ * How much to enlarge the table furniture for a given card width.
+ *
+ * Never drops below 1: shrinking the nameplates on a phone would undo the
+ * touch-target work, and every small-screen layout is already verified at 1.
+ */
+export function uiScaleFor(cardWidth: number): number {
+  return clamp(cardWidth / CHROME_CARD, 1, MAX_UI_SCALE)
+}
 
 /** Largest |cos θ| over the seats — how far the outermost seat sits from centre. */
 export function maxSeatReach(playerCount: number): number {
@@ -96,7 +139,8 @@ export function fanBlocks(
   heroCardWidth = 0,
 ): FanBlock[] {
   // Nameplate + gap + status badge. The seat buttons sit further in and are
-  // only present in director mode, so they are not counted.
+  // only present in director mode, so they are not counted. The plate grows
+  // with `--ui-scale`, so this budget has to follow the card width.
   const plateReach = 52
 
   return Array.from({ length: playerCount }, (_, i) => {
@@ -110,7 +154,7 @@ export function fanBlocks(
     // is not fanned, so it is five full card widths plus the gaps between them.
     const isHero = heroCardWidth > 0 && i === 0
     const width = isHero ? heroCardWidth : cardWidth
-    const reach = plateReach + width * 1.4
+    const reach = plateReach * uiScaleFor(width) + width * 1.4
     const half = isHero ? (FAN_LENGTH * width + 12) / 2 : (FAN_SPAN / 2) * width
 
     const growsDown = yPercent <= 55
@@ -143,6 +187,8 @@ export interface BoardMetrics {
   ry: number
   heroCardWidth: number
   otherCardWidth: number
+  /** Multiplier for the table furniture, derived from the card size. */
+  uiScale: number
 }
 
 /**
@@ -165,7 +211,7 @@ export function computeBoardMetrics(
   playerCount: number,
 ): BoardMetrics {
   if (tableWidth <= 0 || tableHeight <= 0) {
-    return { rx: 0, ry: 0, heroCardWidth: 0, otherCardWidth: 0 }
+    return { rx: 0, ry: 0, heroCardWidth: 0, otherCardWidth: 0, uiScale: 1 }
   }
 
   // `ry` is a compromise. It tracks the felt's own half-height well enough that
@@ -176,10 +222,23 @@ export function computeBoardMetrics(
   const ry = 40
   const rx = tableWidth >= 440 ? 34 : 31
 
+  // The anchor seat's row is not fanned, so it is five full card widths wide
+  // plus gaps. Every player ends up with five cards, so this is the *widest*
+  // row any seat ever has to draw: if it does not fit, nothing does. Solving it
+  // first also bounds the fanned seats below — without that, a raised ceiling
+  // made the hero's row hang off the edge of a narrow portrait table, because
+  // `heroCardWidth` is never allowed to drop below `otherCardWidth`.
+  const heroRoom = (tableWidth * 0.88 - 12) / FAN_LENGTH
+  const widestRow = Math.max(MIN_CARD, Math.floor(heroRoom))
+
   // Distance from the table's centre line to the outermost seat, in pixels.
   const seatOffset = (rx * maxSeatReach(playerCount) * tableWidth) / 100
   const room = Math.max(48, tableWidth / 2 - seatOffset)
-  let otherCardWidth = clamp(Math.round((room * FAN_FILL) / (FAN_SPAN / 2)), MIN_CARD, 96)
+  let otherCardWidth = clamp(
+    Math.round((room * FAN_FILL) / (FAN_SPAN / 2)),
+    MIN_CARD,
+    Math.min(MAX_CARD, widestRow),
+  )
 
   // Two seats facing each other need `2 x plateReach` of clear height plus both
   // hands. On a tiny stage (a 360px phone with four or five seats) that budget
@@ -192,14 +251,11 @@ export function computeBoardMetrics(
     otherCardWidth -= 2
   }
 
-  // The anchor seat's row is not fanned, so it is five full card widths wide
-  // plus gaps. It may never end up smaller than everyone else's cards.
-  const heroRoom = (tableWidth * 0.88 - 12) / FAN_LENGTH
   const heroTarget = Math.min(
     Math.round(otherCardWidth * 1.12),
-    Math.round(heroRoom),
-    108,
-  ) 
+    widestRow,
+    MAX_HERO_CARD,
+  )
   let heroCardWidth = Math.max(otherCardWidth, heroTarget)
   while (
     heroCardWidth > otherCardWidth &&
@@ -211,7 +267,13 @@ export function computeBoardMetrics(
   }
   heroCardWidth = Math.max(heroCardWidth, otherCardWidth)
 
-  return { rx, ry, heroCardWidth, otherCardWidth }
+  return {
+    rx,
+    ry,
+    heroCardWidth,
+    otherCardWidth,
+    uiScale: uiScaleFor(otherCardWidth),
+  }
 }
 
 /**

@@ -51,7 +51,7 @@
   --felt-hi: #16624a;
   --felt-mid: #0d4234;
   --felt-lo: #072019;
-  --felt-watermark: rgba(255, 255, 255, 0.04);
+  --felt-watermark: rgba(255, 255, 255, 0.03);
   --felt-speck: rgba(255, 255, 255, 0.05);
   --felt-label: rgba(255, 255, 255, 0.45);
   --felt-sub: rgba(255, 255, 255, 0.62);
@@ -77,6 +77,11 @@
 
   --card-w: 52px;
   --card-h: 73px;
+
+  /* Set from JS on `.table-wrap` (see ui/layout.ts) so the nameplates, the pot
+     and the badges grow with the cards. Without it a 2560px display drew 96px
+     cards on a 1120px-tall felt with a 30px pot, and the table read as empty. */
+  --ui-scale: 1;
 
   /* Shell padding, plus the iOS notch / home-indicator insets. `env()` is 0
      everywhere else, so the browser build is unaffected. */
@@ -126,7 +131,7 @@
   --felt-hi: #25946d;
   --felt-mid: #177055;
   --felt-lo: #0d5240;
-  --felt-watermark: rgba(255, 255, 255, 0.07);
+  --felt-watermark: rgba(255, 255, 255, 0.05);
   --felt-speck: rgba(255, 255, 255, 0.07);
   --felt-label: rgba(255, 255, 255, 0.72);
   --felt-sub: rgba(255, 255, 255, 0.88);
@@ -498,15 +503,36 @@ select {
   text-align: center;
 }
 
+/*
+ * The felt watermark sits dead centre and the pot sits on top of it — at 4%
+ * white that is fine for the amount, but the small `第 N 轮` chip landed on a
+ * glyph and read as noise. This scrim paints inside the pot's stacking context,
+ * so it covers the watermark without dimming the rest of the felt.
+ */
+.pot::before {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  inset: calc(-26px * var(--ui-scale)) calc(-46px * var(--ui-scale));
+  border-radius: 50%;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 0, 0, 0.34) 0%,
+    rgba(0, 0, 0, 0.2) 45%,
+    transparent 72%
+  );
+  pointer-events: none;
+}
+
 .pot-label {
-  font-size: 9.5px;
+  font-size: calc(9.5px * var(--ui-scale));
   letter-spacing: 0.22em;
   text-transform: uppercase;
   color: var(--felt-label);
 }
 
 .pot-amount {
-  font-size: clamp(20px, 2.6vw, 30px);
+  font-size: calc(clamp(20px, 2.6vw, 30px) * var(--ui-scale));
   font-weight: 750;
   font-variant-numeric: tabular-nums;
   color: var(--gold);
@@ -516,15 +542,15 @@ select {
 
 .pot-breakdown {
   display: flex;
-  gap: 6px;
+  gap: calc(6px * var(--ui-scale));
   flex-wrap: wrap;
   justify-content: center;
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--ui-scale));
   color: var(--felt-sub);
 }
 
 .pot-chip {
-  padding: 2px 8px;
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
   border-radius: 99px;
   background: var(--felt-chip-bg);
   border: 1px solid var(--felt-chip-line);
@@ -539,6 +565,12 @@ select {
  * anchor, so the top seat's nameplate landed on the topbar and the bottom seat's
  * on the action bar. Growing inward from the anchor keeps every seat inside the
  * board whatever its content.
+ *
+ * Child order is explicit rather than DOM order: the hand always sits furthest
+ * from the nameplate, and the seat buttons always sit between the two — right
+ * next to the plate. Reversing the flex axis could not express that, because it
+ * flips the buttons to the far side of the hand for lower-half seats, which
+ * parked them in the middle of the table.
  */
 .seat {
   position: absolute;
@@ -546,10 +578,36 @@ select {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
+  gap: calc(5px * var(--ui-scale));
   z-index: 3;
   transition: filter 0.25s, opacity 0.25s;
   width: max-content;
+}
+
+.seat-controls {
+  order: 2;
+}
+
+.seat-cards {
+  order: 1;
+}
+
+.seat-info {
+  order: 3;
+}
+
+/* Upper half: plate first, hand hangs inward. Hands always grow toward the
+   middle of the table; see the ordering rules above. */
+.seat.cards-below {
+  transform: translate(-50%, 0);
+}
+
+.seat.cards-below .seat-info {
+  order: 1;
+}
+
+.seat.cards-below .seat-cards {
+  order: 3;
 }
 
 .seat.is-folded {
@@ -562,29 +620,20 @@ select {
   filter: grayscale(0.9);
 }
 
-/* Hands grow toward the middle of the table: seats in the upper half hang their
-   cards below the nameplate, seats in the lower half stack them above. DOM order
-   is [controls, cards, info], so reversing puts the plate first and the controls
-   innermost in both cases. */
-.seat.cards-below {
-  flex-direction: column-reverse;
-  transform: translate(-50%, 0);
-}
-
 /* Plate, bet chip and status badge travel together. */
 .seat-info {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: calc(4px * var(--ui-scale));
 }
 
 .seat-plate {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 7px;
-  padding: 5px 11px;
+  gap: calc(7px * var(--ui-scale));
+  padding: calc(5px * var(--ui-scale)) calc(11px * var(--ui-scale));
   border-radius: 999px;
   background: var(--surface-bar);
   border: 1px solid var(--line-strong);
@@ -608,18 +657,18 @@ select {
 }
 
 .seat-name {
-  font-size: 12.5px;
+  font-size: calc(12.5px * var(--ui-scale));
   font-weight: 620;
-  max-width: 116px;
+  max-width: calc(116px * var(--ui-scale));
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .seat-bot-tag,
 .seat-you-tag {
-  font-size: 9px;
+  font-size: calc(9px * var(--ui-scale));
   letter-spacing: 0.08em;
-  padding: 1px 5px;
+  padding: calc(1px * var(--ui-scale)) calc(5px * var(--ui-scale));
   border-radius: 4px;
   white-space: nowrap;
 }
@@ -637,7 +686,7 @@ select {
 }
 
 .seat-chips {
-  font-size: 13px;
+  font-size: calc(13px * var(--ui-scale));
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--gold);
@@ -649,14 +698,14 @@ select {
 
 .dealer-btn {
   position: absolute;
-  top: -7px;
-  left: -9px;
-  width: 19px;
-  height: 19px;
+  top: calc(-7px * var(--ui-scale));
+  left: calc(-9px * var(--ui-scale));
+  width: calc(19px * var(--ui-scale));
+  height: calc(19px * var(--ui-scale));
   border-radius: 50%;
   background: linear-gradient(180deg, #ffffff, #cfd6dc);
   color: #10161c;
-  font-size: 10px;
+  font-size: calc(10px * var(--ui-scale));
   font-weight: 800;
   display: grid;
   place-items: center;
@@ -684,9 +733,9 @@ select {
 .seat-badge {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 10.5px;
-  padding: 2px 8px;
+  gap: calc(5px * var(--ui-scale));
+  font-size: calc(10.5px * var(--ui-scale));
+  padding: calc(2px * var(--ui-scale)) calc(8px * var(--ui-scale));
   border-radius: 999px;
   background: var(--surface-inset-deep);
   border: 1px solid var(--line);
@@ -720,17 +769,17 @@ select {
 .seat-bet {
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 11px;
+  gap: calc(5px * var(--ui-scale));
+  font-size: calc(11px * var(--ui-scale));
   font-variant-numeric: tabular-nums;
   color: var(--felt-sub);
-  padding: 1px 7px;
+  padding: calc(1px * var(--ui-scale)) calc(7px * var(--ui-scale));
   border-radius: 6px;
   background: var(--felt-chip-bg);
 }
 
 .seat-hand-label {
-  font-size: 10.5px;
+  font-size: calc(10.5px * var(--ui-scale));
   color: var(--gold);
   letter-spacing: 0.02em;
   white-space: nowrap;
@@ -741,18 +790,18 @@ select {
    nameplate and never overhanging the board. */
 .seat-controls {
   display: flex;
-  gap: 4px;
+  gap: calc(4px * var(--ui-scale));
   z-index: 4;
   animation: fade-in 0.15s ease-out;
 }
 
 .seat-ctl {
-  width: 26px;
-  height: 26px;
+  width: calc(26px * var(--ui-scale));
+  height: calc(26px * var(--ui-scale));
   display: grid;
   place-items: center;
-  border-radius: 8px;
-  font-size: 12px;
+  border-radius: calc(8px * var(--ui-scale));
+  font-size: calc(12px * var(--ui-scale));
   line-height: 1;
   background: var(--surface-bar);
   border: 1px solid var(--line-strong);
@@ -2056,12 +2105,15 @@ input[type='range']::-moz-range-thumb {
 /* ------------------------------------------------------------- touch devices
    iPad and iPhone need real tap targets: the desktop sizes above are tuned for
    a mouse. 34px for the seat buttons and 44px for the betting controls is the
-   practical floor before mis-taps start costing chips. */
+   practical floor before mis-taps start costing chips.
+
+   `max()` rather than a flat override, so an iPad Pro still gets the larger
+   buttons that `--ui-scale` asks for instead of being pinned to the floor. */
 @media (pointer: coarse) {
   .seat-ctl {
-    width: 34px;
-    height: 34px;
-    font-size: 15px;
+    width: max(34px, calc(26px * var(--ui-scale)));
+    height: max(34px, calc(26px * var(--ui-scale)));
+    font-size: max(15px, calc(12px * var(--ui-scale)));
     border-radius: 10px;
   }
 

@@ -233,6 +233,49 @@ async function main() {
       if (!bad) log(`${label}: ${m.seats.length} seat(s) clear of the topbar and betting bar`)
     }
 
+    /**
+     * The seat buttons belong next to their own nameplate. They used to land on
+     * the far side of the hand, which parked them in the middle of the table on
+     * top of the pot.
+     */
+    const assertControlsBesidePlates = async (label) => {
+      const rows = await cdp.eval(`(() => {
+        const pot = document.querySelector('.pot');
+        const pr = pot ? pot.getBoundingClientRect() : null;
+        return [...document.querySelectorAll('.seat')].map((el) => {
+          const plate = el.querySelector('.seat-plate');
+          const ctl = el.querySelector('.seat-controls');
+          if (!plate || !ctl) return null;
+          const p = plate.getBoundingClientRect();
+          const c = ctl.getBoundingClientRect();
+          const gap =
+            c.top >= p.bottom ? c.top - p.bottom : p.top >= c.bottom ? p.top - c.bottom : -1;
+          const overPot = pr
+            ? !(c.right < pr.left || c.left > pr.right || c.bottom < pr.top || c.top > pr.bottom)
+            : false;
+          return {
+            name: (el.querySelector('.seat-name') || {}).textContent || '?',
+            gap: Math.round(gap),
+            overPot,
+          };
+        }).filter(Boolean);
+      })()`)
+
+      if (!rows.length) return
+      let bad = 0
+      for (const r of rows) {
+        if (r.gap < 0 || r.gap > 64) {
+          errors.push(`${label}: seat ${r.name} buttons are ${r.gap}px from its nameplate`)
+          bad++
+        }
+        if (r.overPot) {
+          errors.push(`${label}: seat ${r.name} buttons overlap the pot`)
+          bad++
+        }
+      }
+      if (!bad) log(`${label}: ${rows.length} seat button row(s) beside their plates, clear of the pot`)
+    }
+
     /** How many hole cards are currently face up, per seat index. */
     const peekState = () =>
       cdp.eval(`(() => [...document.querySelectorAll('.seat')].map((seat) => {
@@ -480,6 +523,7 @@ async function main() {
       log(`god mode director bar: "${directing.label}" -> seat ${directing.seat}`)
     }
     await capture('15-god-director-betting')
+    await assertControlsBesidePlates('director 4p')
 
     // Press a betting button and confirm it applied to the seat on turn.
     const acted = await cdp.eval(`(() => {
@@ -512,36 +556,48 @@ async function main() {
     await assertNoPageScroll('narrow 350x1127')
     await assertSeatsClearOfChrome('narrow 350x1127')
 
-    // 17+ — light theme
+    // Heads-up on a wide stage: two seats facing each other across the felt is
+    // where the buttons drifted into the middle of the table.
+    await setViewport(1280, 650)
+    await goto(`${BASE}/?quick=god&seats=2&seed=demo-n`)
+    await sleep(1800)
+    for (let i = 0; i < 6; i++) await clickText('翻出下一张')
+    await sleep(400)
+    await capture('17-headsup-wide-1280x650')
+    await assertNoPageScroll('heads-up 1280x650')
+    await assertSeatsClearOfChrome('heads-up 1280x650')
+    await assertControlsBesidePlates('heads-up 1280x650')
+
+    // 18+ — light theme
     await setViewport(1680, 1050)
     await setTheme('light')
     await goto(`${BASE}/`)
     await sleep(500)
-    await capture('17-light-setup')
+    await capture('18-light-setup')
     await goto(`${BASE}/?quick=god&seats=5&speed=4&seed=demo-f`)
     await sleep(6500)
-    await capture('18-light-table')
+    await capture('19-light-table')
     await assertNoPageScroll('light table 1680x1050')
     const lightTheme = await cdp.eval(`document.documentElement.dataset.theme`)
     if (lightTheme !== 'light') errors.push(`expected light theme for light capture, got ${lightTheme}`)
 
     await clickText('复制战况')
     await sleep(700)
-    await capture('19-light-summary')
+    await capture('20-light-summary')
     await cdp.eval(
       `[...document.querySelectorAll('button')].find(b=>b.textContent.includes('关闭'))?.click()`,
     )
     await sleep(400)
     await clickText('规则')
     await sleep(600)
-    await capture('20-light-rules')
+    await capture('21-light-rules')
 
     await setViewport(430, 900, true)
     await setTheme('light')
     await goto(`${BASE}/?quick=hotseat&seats=3&speed=2&seed=demo-e`)
     await sleep(3000)
     await passGate()
-    await capture('21-light-mobile')
+    await capture('22-light-mobile')
     await assertNoPageScroll('light mobile 430x900')
     await assertSeatsClearOfChrome('light mobile 430x900')
 
