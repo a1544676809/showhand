@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
  * Board geometry.
  *
  * The table is sized in JS rather than CSS so it can respect *both* axes of its
- * container: an oval that fits the available width and height, with cards scaled
+ * container: an oval that fills the available box, with cards scaled
  * proportionally. That keeps five-card rows readable from a phone in portrait up
  * to a wide desktop without the page ever scrolling.
  */
@@ -13,16 +13,26 @@ export const TABLE_RATIO = 1.62
 const clamp = (value: number, min: number, max: number) =>
   Math.min(max, Math.max(min, value))
 
+/** Widest and tallest the board may be relative to its box. */
+export const MIN_TABLE_RATIO = 0.85
+export const MAX_TABLE_RATIO = 1.62
+
 /**
- * Phones are width-constrained, so a wide oval would leave most of the screen
- * empty — and with five seats the *vertical* gap between rows is what limits
- * the card size. A near-square table on a narrow stage spends the spare height
- * on that gap.
+ * Pick the table's aspect ratio to *fill* the stage, clamped to a sane range.
+ *
+ * A fixed ratio per breakpoint left a 4:3 portrait iPad (810x1080) with ~300px
+ * of dead space, because its stage is taller than 1/1.38. Solving for the ratio
+ * that exactly fills the box uses the space at every aspect — 16:9, 4:3, or a
+ * phone's 9:19.5 — instead of only the landscape ones.
  */
-export function tableRatioFor(stageWidth: number): number {
-  if (stageWidth < 520) return 1.05
-  if (stageWidth < 820) return 1.38
-  return TABLE_RATIO
+export function tableRatioFor(stageWidth: number, stageHeight?: number): number {
+  if (!stageHeight || stageHeight <= 0) {
+    // Legacy single-argument call: fall back to a width-only heuristic.
+    if (stageWidth < 520) return 1.05
+    if (stageWidth < 820) return 1.38
+    return TABLE_RATIO
+  }
+  return clamp(stageWidth / stageHeight, MIN_TABLE_RATIO, MAX_TABLE_RATIO)
 }
 
 export interface TableSize {
@@ -32,7 +42,7 @@ export interface TableSize {
 
 export function computeTableSize(stageWidth: number, stageHeight: number): TableSize {
   if (stageWidth <= 0 || stageHeight <= 0) return { width: 0, height: 0 }
-  const ratio = tableRatioFor(stageWidth)
+  const ratio = tableRatioFor(stageWidth, stageHeight)
   const width = Math.min(stageWidth, stageHeight * ratio)
   return { width, height: width / ratio }
 }
@@ -154,10 +164,12 @@ export function computeBoardMetrics(
     return { rx: 0, ry: 0, heroCardWidth: 0, otherCardWidth: 0 }
   }
 
-  // `ry` is generous on purpose: the vertical gap between one seat's hand and
-  // the next is what keeps a five-card fan from touching its neighbour, and a
-  // rounder (phone) table has proportionally less height to spend.
-  const ry = 44
+  // `ry` is a compromise. It tracks the felt's own half-height well enough that
+  // seats sit on the rail rather than adrift from it (~40% of the box), while
+  // still leaving the vertical gap that keeps a five-card fan clear of the seat
+  // opposite. Bigger values fit short, wide windows but push the top and bottom
+  // seats off the felt; smaller ones strand them in the middle.
+  const ry = 40
   const rx = tableWidth >= 440 ? 34 : 31
 
   // Distance from the table's centre line to the outermost seat, in pixels.

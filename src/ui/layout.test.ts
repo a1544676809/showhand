@@ -2,7 +2,10 @@ import { describe, expect, it } from 'vitest'
 import {
   FAN_SPAN,
   MAX_CARD,
+  MAX_TABLE_RATIO,
   MIN_CARD,
+  MIN_TABLE_RATIO,
+  TABLE_RATIO,
   computeBoardMetrics,
   computeTableSize,
   fansCollide,
@@ -16,6 +19,9 @@ const STAGES: [string, number, number][] = [
   ['desktop 1680x1050', 1330, 800],
   ['laptop 1366x768', 1010, 560],
   ['small laptop 1280x720', 950, 520],
+  ['ipad landscape 1366x1024', 1340, 800],
+  ['ipad 1024x768', 1010, 560],
+  ['ipad portrait 810x1080', 788, 880],
   ['tablet 900x1200', 860, 700],
   ['phone 430x900', 410, 620],
   ['phone 360x640', 344, 400],
@@ -45,10 +51,44 @@ describe('maxSeatReach', () => {
 })
 
 describe('tableRatioFor', () => {
-  it('gets rounder as the viewport narrows', () => {
-    expect(tableRatioFor(1400)).toBeGreaterThan(tableRatioFor(700))
-    expect(tableRatioFor(700)).toBeGreaterThan(tableRatioFor(400))
-    expect(tableRatioFor(400)).toBeGreaterThan(1)
+  it('fills the stage at any aspect ratio', () => {
+    // 4:3 tablet both ways falls inside the clamp, so the ratio is the
+    // stage's own.
+    expect(tableRatioFor(1000, 750)).toBeCloseTo(1000 / 750, 2)
+    expect(tableRatioFor(788, 880)).toBeCloseTo(788 / 880, 2)
+    // A phone is taller than the portrait minimum, so it clamps.
+    expect(tableRatioFor(410, 620)).toBe(MIN_TABLE_RATIO)
+    // Wider than the maximum: clamped too.
+    expect(tableRatioFor(1330, 800)).toBe(MAX_TABLE_RATIO)
+  })
+
+  it('clamps to a sane range so the board never becomes a sliver', () => {
+    expect(tableRatioFor(2400, 400)).toBe(MAX_TABLE_RATIO)
+    expect(tableRatioFor(300, 1400)).toBe(MIN_TABLE_RATIO)
+  })
+
+  it('stays within the clamped bounds for every stage', () => {
+    for (const [, w, h] of STAGES) {
+      const ratio = tableRatioFor(w, h)
+      expect(ratio).toBeGreaterThanOrEqual(MIN_TABLE_RATIO)
+      expect(ratio).toBeLessThanOrEqual(MAX_TABLE_RATIO)
+    }
+  })
+
+  it('uses a width-only fallback when no height is given', () => {
+    expect(tableRatioFor(400)).toBe(1.05)
+    expect(tableRatioFor(700)).toBe(1.38)
+    expect(tableRatioFor(1400)).toBe(TABLE_RATIO)
+  })
+
+  it('uses the whole stage instead of leaving dead space', () => {
+    for (const [label, w, h] of STAGES) {
+      const { width, height } = computeTableSize(w, h)
+      // The table should touch whichever axis is binding.
+      const fillsWidth = Math.abs(width - w) < 0.5
+      const fillsHeight = Math.abs(height - h) < 0.5
+      expect(fillsWidth || fillsHeight, `${label} leaves dead space`).toBe(true)
+    }
   })
 })
 

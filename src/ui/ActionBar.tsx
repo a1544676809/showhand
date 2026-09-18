@@ -8,14 +8,20 @@ export interface ActionBarProps {
   seat: number
   onAct: (action: PlayerAction) => void
   speed: number
+  /** Set when the director is betting for someone else, e.g. "二号位". */
+  onBehalfOf?: string | null
 }
 
 /**
  * The betting controls for whoever is on turn. Amounts are always expressed as
  * a *total street commitment* (what the engine wants), while the UI shows the
  * incremental cost so it matches how players think about a call.
+ *
+ * In 上帝视角 these controls drive the seat that is on turn — including AI
+ * seats — so the director can place any player's bet, with the full raise
+ * slider.
  */
-export function ActionBar({ state, legal, seat, onAct }: ActionBarProps) {
+export function ActionBar({ state, legal, seat, onAct, onBehalfOf }: ActionBarProps) {
   const player = state.players[seat]
   const unit = betUnit(state.config, state.street)
 
@@ -68,7 +74,13 @@ export function ActionBar({ state, legal, seat, onAct }: ActionBarProps) {
   }
 
   return (
-    <div className="actionbar">
+    <div className={`actionbar${onBehalfOf ? ' is-directing' : ''}`}>
+      {onBehalfOf && (
+        <div className="actionbar-directing">
+          <span className="pulse-dot" />
+          代 <b>{onBehalfOf}</b> 行动
+        </div>
+      )}
       <div className="actionbar-main">
         <button className="btn danger" onClick={() => onAct({ type: 'fold' })} disabled={!legal.fold}>
           弃牌

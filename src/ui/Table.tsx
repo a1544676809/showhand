@@ -49,6 +49,8 @@ export interface SeatProps {
   cardsBelow: boolean
   /** Show the per-seat action buttons. */
   showControls: boolean
+  /** The director is currently betting on this seat's behalf. */
+  isDirected: boolean
   isPeeked: boolean
   onToggleBot: () => void
   onTogglePeek: () => void
@@ -67,6 +69,7 @@ function Seat({
   isWinner,
   cardsBelow,
   showControls,
+  isDirected,
   isPeeked,
   onToggleBot,
   onTogglePeek,
@@ -93,6 +96,7 @@ function Seat({
         'seat',
         isActive ? 'is-active' : '',
         isYou ? 'is-you' : '',
+        isDirected ? 'is-directed' : '',
         cardsBelow ? 'cards-below' : '',
         statusClass,
       ]
@@ -192,7 +196,7 @@ function Seat({
           <button
             className="seat-ctl"
             onClick={onCopyPerspective}
-            title={`复制以 ${player.name} 视角的局面（对家底牌会被隐藏）`}
+            title={`直接复制以 ${player.name} 视角的局面（对家底牌会被隐藏）`}
           >
             📋
           </button>
@@ -211,6 +215,8 @@ export interface TableProps {
   /** Seats the user explicitly uncovered. */
   peekedSeats: readonly number[]
   showSeatControls: boolean
+  /** Seat whose betting controls the director is driving, if any. */
+  directedSeat: number | null
   onToggleBot: (seat: number) => void
   onTogglePeek: (seat: number) => void
   onCopyPerspective: (seat: number) => void
@@ -225,6 +231,7 @@ export function Table({
   perspective,
   peekedSeats,
   showSeatControls,
+  directedSeat,
   onToggleBot,
   onTogglePeek,
   onCopyPerspective,
@@ -297,6 +304,7 @@ export function Table({
             // half hang them below.
             cardsBelow={y <= 55}
             showControls={showSeatControls}
+            isDirected={directedSeat === player.seat}
             isPeeked={peekedSeats.includes(player.seat)}
             onToggleBot={() => onToggleBot(player.seat)}
             onTogglePeek={() => onTogglePeek(player.seat)}

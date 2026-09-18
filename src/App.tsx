@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { cardId, makeDeck } from './engine/cards'
 import { legalActions } from './engine/game'
+import { renderSummaryText } from './engine/text'
 import type { PlayerAction } from './engine/types'
 import { ActionBar, WaitingBar } from './ui/ActionBar'
 import { computeTableSize, useElementSize } from './ui/layout'
@@ -13,6 +14,8 @@ import {
   ResultBand,
   RulesPanel,
   TextExportPanel,
+  Toast,
+  copyText,
 } from './ui/panels'
 import { SetupScreen } from './ui/SetupScreen'
 import { Table } from './ui/Table'
@@ -77,10 +80,18 @@ export default function App() {
   const controller = useGameController()
   const { theme, toggle: toggleTheme } = useTheme()
   const [modal, setModal] = useState<ModalKind>('none')
-  /** Seat the export panel should open on, set by a per-seat 📋 button. */
+  /** Seat the export panel should open on, set by the topbar button. */
   const [exportSeat, setExportSeat] = useState<number | null>(null)
+  const [toast, setToast] = useState<string | null>(null)
+  const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [stageRef, stageSize] = useElementSize<HTMLDivElement>()
   usePreloadedCards()
+
+  const showToast = (message: string) => {
+    setToast(message)
+    if (toastTimer.current) clearTimeout(toastTimer.current)
+    toastTimer.current = setTimeout(() => setToast(null), 2200)
+  }
 
   const { state, setup, perspective, peekedSeats, anchorSeat, exportPerspective, speed } = controller
 
@@ -98,8 +109,18 @@ export default function App() {
   )
 
   const actorSeat = state?.stage === 'betting' ? state.toActSeat : null
-  const iAmActing =
-    actorSeat !== null && state !== null && perspective === actorSeat && !state.players[actorSeat].isBot
+  const actor = actorSeat === null || !state ? null : state.players[actorSeat]
+  /** 上帝视角 is a director's seat: the person at the keyboard bets for anyone. */
+  const directorMode = setup?.mode === 'god'
+
+  // Who may press the betting buttons right now?
+  //  - the seat's own player, when it is their turn and they are human, or
+  //  - the director, in god mode, for whichever seat is on turn.
+  const controlsActingSeat =
+    actorSeat !== null &&
+    actor !== null &&
+    ((!actor.isBot && perspective === actorSeat) || directorMode)
+
   const handFinished = state?.stage === 'handOver' || state?.stage === 'gameOver'
 
   // ------------------------------------------------- shareable quick-start
@@ -130,7 +151,7 @@ export default function App() {
         controller.advance()
         return
       }
-      if (!iAmActing || !legal) return
+      if (!controlsActingSeat || !legal) return
       const fire = (action: PlayerAction) => {
         e.preventDefault()
         controller.act(action)
@@ -153,7 +174,7 @@ export default function App() {
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [handFinished, iAmActing, legal, speed, controller])
+  }, [handFinished, controlsActingSeat, legal, speed, controller])
 
   // ------------------------------------------------------------------ views
   if (!state || !setup) {
@@ -172,13 +193,20 @@ export default function App() {
   const me = perspective === null ? null : state.players[perspective]
   const ranking = [...state.players].sort((a, b) => b.chips - a.chips)
   const manual = speed === 0
-  const showActionBar = state.stage === 'betting' && legal !== null && iAmActing && actorSeat !== null
+  const showActionBar = state.stage === 'betting' && legal !== null && controlsActingSeat && actorSeat !== null
   const showStepBar =
     !showActionBar && (state.stage === 'betting' || state.stage === 'deal' || state.stage === 'showdown')
 
   const openExport = (seat: number | null, kind: ModalKind = 'summary') => {
     setExportSeat(seat)
     setModal(kind)
+  }
+
+  /** Per-seat 📋 copies straight to the clipboard — no modal. */
+  const copySeatSummary = async (seat: number) => {
+    const name = state.players[seat]?.name ?? `座位 ${seat}`
+    const ok = await copyText(renderSummaryText(state, seat))
+    showToast(ok ? `已复制「${name}」视角的局面` : '复制失败，请改用顶栏的「复制战况」')
   }
 
   return (
@@ -285,9 +313,10 @@ export default function App() {
               perspective={perspective}
               peekedSeats={peekedSeats}
               showSeatControls={controller.showSeatControls}
+              directedSeat={directorMode && showActionBar ? actorSeat : null}
               onToggleBot={(seat) => controller.setSeatBot(seat, !state.players[seat].isBot)}
               onTogglePeek={controller.togglePeek}
-              onCopyPerspective={(seat) => openExport(seat, 'summary')}
+              onCopyPerspective={copySeatSummary}
               width={tableSize.width}
               height={tableSize.height}
             />
@@ -302,6 +331,7 @@ export default function App() {
               seat={actorSeat}
               onAct={controller.act}
               speed={speed}
+              onBehalfOf={directorMode && actor && actor.isBot ? actor.name : null}
             />
           ) : showStepBar ? (
             <WaitingBar
@@ -367,6 +397,8 @@ export default function App() {
       {modal === 'rules' && <RulesPanel onClose={() => setModal('none')} />}
       {modal === 'proof' && <ProofPanel state={state} onClose={() => setModal('none')} />}
       {modal === 'log' && <LogModal state={state} onClose={() => setModal('none')} />}
+
+      <Toast message={toast} />
 
       {state.stage === 'gameOver' && modal === 'none' && (
         <Modal

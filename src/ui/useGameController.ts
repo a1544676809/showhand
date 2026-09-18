@@ -222,6 +222,10 @@ export function useGameController(): Controller {
       setPeekedSeats([])
       setShowSeatControls(next.mode === 'god')
       setSpeed(next.mode === 'god' ? 0 : 1)
+      // 上帝视角 looks through nobody's eyes: every 暗牌 starts face down and is
+      // uncovered seat by seat. Leaving this at 0 made seat 0 permanently visible.
+      setPerspective(next.mode === 'god' ? null : 0)
+      setAnchorSeat(next.mode === 'god' ? 0 : 0)
       setState(startHand(game))
       saveLastSetup(next)
     },

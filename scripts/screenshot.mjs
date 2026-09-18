@@ -174,6 +174,18 @@ async function main() {
       return ok
     }
 
+    /**
+     * Hot-seat pops the privacy gate whenever a human seat is on turn, which
+     * would otherwise be all a screenshot captures. Dismiss it if present.
+     */
+    const passGate = async () => {
+      const present = await cdp.eval(`!!document.querySelector('.gate')`)
+      if (!present) return false
+      await cdp.eval(`document.querySelector('.gate button')?.click()`)
+      await sleep(450)
+      return true
+    }
+
     /** How many hole cards are currently face up, per seat index. */
     const peekState = () =>
       cdp.eval(`(() => [...document.querySelectorAll('.seat')].map((seat) => {
@@ -241,6 +253,7 @@ async function main() {
     // 2 — hot-seat table
     await goto(`${BASE}/?quick=hotseat&seats=3&speed=2&seed=demo-a`)
     await sleep(3200)
+    await passGate()
     await capture('02-table-hotseat')
     await assertNoPageScroll('table 1680x1050')
 
@@ -252,6 +265,7 @@ async function main() {
     // 4 — through the gate and onto the table
     await clickText('显示我的牌')
     await sleep(600)
+    await passGate()
     await capture('04-hotseat-table')
 
     // 5 — the per-player situation report
@@ -342,44 +356,129 @@ async function main() {
     await setViewport(430, 900, true)
     await goto(`${BASE}/?quick=hotseat&seats=3&speed=2&seed=demo-e`)
     await sleep(3200)
+    await passGate()
     await capture('10-mobile')
     await assertNoPageScroll('table 430x900')
 
     await setViewport(1366, 768)
     await goto(`${BASE}/?quick=hotseat&seats=5&speed=2&seed=demo-h`)
     await sleep(3200)
+    await passGate()
     await capture('11-laptop-1366')
     await assertNoPageScroll('table 1366x768')
 
-    // 12+ — light theme
+    // 12-14 — iPad, which is 4:3 in both orientations.
+    await setViewport(1366, 1024)
+    await goto(`${BASE}/?quick=hotseat&seats=5&speed=2&seed=demo-i`)
+    await sleep(3200)
+    await passGate()
+    await capture('12-ipad-landscape-4x3')
+    await assertNoPageScroll('iPad landscape 1366x1024')
+
+    await setViewport(1024, 768)
+    await goto(`${BASE}/?quick=hotseat&seats=5&speed=2&seed=demo-h`)
+    await sleep(3400)
+    await passGate()
+    await capture('13-ipad-1024x768')
+    await assertNoPageScroll('iPad 1024x768')
+
+    await setViewport(810, 1080)
+    await goto(`${BASE}/?quick=hotseat&seats=4&speed=2&seed=demo-j`)
+    await sleep(3400)
+    await passGate()
+    await capture('14-ipad-portrait-4x3')
+    await assertNoPageScroll('iPad portrait 810x1080')
+
+    // 15 — the director can bet for whichever seat is on turn. Step through the
+    // deal, then confirm the betting bar targets that seat and actually works.
+    await setViewport(1680, 1050)
+    await setTheme('dark')
+    await goto(`${BASE}/?quick=god&seats=4&seed=demo-l`)
+    await sleep(1600)
+    for (let i = 0; i < 10; i++) await clickText('翻出下一张')
+    await sleep(500)
+
+    const directing = await cdp.eval(`(() => {
+      const bar = document.querySelector('.actionbar.is-directing');
+      const seat = document.querySelector('.seat.is-directed .seat-name');
+      return {
+        bar: !!bar,
+        label: bar ? (bar.querySelector('.actionbar-directing')?.textContent || '').trim() : null,
+        seat: seat ? seat.textContent : null,
+        buttons: bar ? [...bar.querySelectorAll('button')].map((b) => b.textContent.trim()) : [],
+      };
+    })()`)
+    if (!directing.bar) {
+      errors.push('god mode: no director betting bar appeared for the seat on turn')
+    } else {
+      const matchesSeat =
+        directing.label && directing.seat && directing.label.includes(directing.seat)
+      if (!matchesSeat) {
+        errors.push(
+          `god mode: betting bar labels "${directing.label}" but the marked seat is "${directing.seat}"`,
+        )
+      }
+      if (!directing.buttons.some((b) => b.includes('弃牌'))) {
+        errors.push(`god mode: director bar has no fold button (${directing.buttons.join('|')})`)
+      }
+      if (!directing.buttons.some((b) => b.includes('加注') || b.includes('下注'))) {
+        errors.push(`god mode: no raise control on the director bar (${directing.buttons.join('|')})`)
+      }
+      log(`god mode director bar: "${directing.label}" -> seat ${directing.seat}`)
+    }
+    await capture('15-god-director-betting')
+
+    // Press a betting button and confirm it applied to the seat on turn.
+    const acted = await cdp.eval(`(() => {
+      const bar = document.querySelector('.actionbar.is-directing');
+      if (!bar) return 'no bar';
+      const btn = [...bar.querySelectorAll('button')].find((b) => /过牌|跟注/.test(b.textContent));
+      if (!btn) return 'no check/call button';
+      const label = btn.textContent.trim();
+      btn.click();
+      return label;
+    })()`)
+    await sleep(700)
+    if (String(acted).startsWith('no ')) {
+      errors.push(`god mode: could not act on behalf of the seat (${acted})`)
+    } else {
+      const logHasIt = await cdp.eval(
+        `[...document.querySelectorAll('.log-entry')].some((e) => /过牌|跟注/.test(e.textContent))`,
+      )
+      if (!logHasIt) errors.push(`god mode: pressed "${acted}" but nothing was logged`)
+      else log(`god mode: director pressed "${acted}" and the engine accepted it`)
+    }
+
+    // 16+ — light theme
     await setViewport(1680, 1050)
     await setTheme('light')
     await goto(`${BASE}/`)
     await sleep(500)
-    await capture('12-light-setup')
+    await capture('16-light-setup')
     await goto(`${BASE}/?quick=god&seats=5&speed=4&seed=demo-f`)
     await sleep(6500)
-    await capture('13-light-table')
+    await capture('17-light-table')
     await assertNoPageScroll('light table 1680x1050')
     const lightTheme = await cdp.eval(`document.documentElement.dataset.theme`)
     if (lightTheme !== 'light') errors.push(`expected light theme for light capture, got ${lightTheme}`)
 
     await clickText('复制战况')
     await sleep(700)
-    await capture('14-light-summary')
+    await capture('18-light-summary')
     await cdp.eval(
       `[...document.querySelectorAll('button')].find(b=>b.textContent.includes('关闭'))?.click()`,
     )
     await sleep(400)
     await clickText('规则')
     await sleep(600)
-    await capture('15-light-rules')
+    await capture('19-light-rules')
 
     await setViewport(430, 900, true)
     await setTheme('light')
-    await goto(`${BASE}/?quick=solo&seats=3&speed=2&seed=demo-e`)
+    await goto(`${BASE}/?quick=hotseat&seats=3&speed=2&seed=demo-e`)
     await sleep(3000)
-    await capture('17-light-mobile')
+    await passGate()
+    await capture('20-light-mobile')
     await assertNoPageScroll('light mobile 430x900')
 
     // DOM-level invariants on the god view: every rendered card face must be

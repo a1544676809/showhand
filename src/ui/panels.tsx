@@ -66,7 +66,8 @@ const FORMAT_HINTS: Record<ExportFormat, string> = {
   json: '结构化数据，供程序读取',
 }
 
-async function copyText(text: string): Promise<boolean> {
+/** Copies text, falling back to the legacy path when the async API is blocked. */
+export async function copyText(text: string): Promise<boolean> {
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text)
@@ -263,6 +264,16 @@ export function LogList({ state }: { state: GameState }) {
           <span>{entry.text}</span>
         </div>
       ))}
+    </div>
+  )
+}
+
+/** Transient confirmation banner, so an action with no visible result still reports back. */
+export function Toast({ message }: { message: string | null }) {
+  if (!message) return null
+  return (
+    <div className="toast" role="status" aria-live="polite">
+      {message}
     </div>
   )
 }
