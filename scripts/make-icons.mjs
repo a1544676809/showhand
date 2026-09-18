@@ -35,10 +35,17 @@ const RENDERS = [
   {
     svg: join(ROOT, 'assets', 'splash.svg'),
     targets: [
-      ['ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732.png', 2732],
-      ['ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732-1.png', 2732],
-      ['ios/App/App/Assets.xcassets/Splash.imageset/splash-2732x2732-2.png', 2732],
+      // A single-scale imageset entry (see the Contents.json written below).
+      // Capacitor's stock template ships the *same* 2732x2732 PNG three times
+      // as 1x/2x/3x, which is 5.4 MB of identical pixels in the bundle.
+      ['ios/App/App/Assets.xcassets/Splash.imageset/splash.png', 2048],
     ],
+    // Xcode accepts an image entry with no `scale` key, which means "any scale".
+    contentsJson: {
+      images: [{ filename: 'splash.png', idiom: 'universal' }],
+      info: { version: 1, author: 'xcode' },
+    },
+    prune: ['splash-2732x2732.png', 'splash-2732x2732-1.png', 'splash-2732x2732-2.png'],
   },
 ]
 
@@ -158,6 +165,19 @@ svg{display:block;width:100vw;height:100vh}</style>${svg}`
         })
         writeFileSync(out, Buffer.from(data, 'base64'))
         log(`wrote ${relative} (${size}x${size})`)
+      }
+
+      if (render.contentsJson) {
+        const dir = dirname(join(ROOT, render.targets[0][0]))
+        writeFileSync(join(dir, 'Contents.json'), JSON.stringify(render.contentsJson, null, 2) + '\n')
+        log(`wrote ${render.targets[0][0].replace(/\/[^/]+$/, '/Contents.json')}`)
+      }
+      for (const stale of render.prune ?? []) {
+        const victim = dirname(join(ROOT, render.targets[0][0])) + '/' + stale
+        if (existsSync(victim)) {
+          rmSync(victim)
+          log(`pruned stale ${stale}`)
+        }
       }
     }
 

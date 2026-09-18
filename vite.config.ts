@@ -10,7 +10,9 @@ export default defineConfig({
   },
   build: {
     outDir: 'dist',
-    sourcemap: true,
+    // Off for shipped builds: the map is ~1.3 MB (14% of the iOS bundle) and
+    // the source is published under the GPL anyway, so it buys nothing.
+    sourcemap: false,
   },
   test: {
     environment: 'node',
