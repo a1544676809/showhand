@@ -47,5 +47,8 @@ ios/DerivedData/
 /DerivedData/
 Payload/
 *.ipa
+
+# Downloaded CI artefacts
+artifacts/
 *.xcuserstate
 xcuserdata/
