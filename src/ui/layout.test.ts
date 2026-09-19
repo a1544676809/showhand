@@ -7,7 +7,6 @@ import {
   MAX_UI_SCALE,
   MIN_CARD,
   MIN_TABLE_RATIO,
-  SEAT_BUTTONS_REACH,
   SEAT_GAP,
   SEAT_PLATE_REACH,
   SEAT_REACH_SLACK,
@@ -117,14 +116,15 @@ describe('tableRatioFor', () => {
 describe('computeBoardMetrics', () => {
   it('produces a collision-free board for every supported stage', () => {
     /*
-     * Five seats do not fit on a short table. Each seat spends
-     * plate + badge + gap (58px) plus its card row before anything is drawn,
-     * and the seats facing each other need two of those; on a ~380-480px-tall
-     * felt the solver bottoms out at MIN_CARD and two side seats still clip by
-     * ~15px. Showing the per-seat buttons adds another 31px per seat and pushes
-     * the 410px phone into the same bucket. Rotating the phone resolves it.
+     * One combination is genuinely impossible: five seats on a 380px-tall felt.
+     * Each seat spends plate + badge + gap (58px) plus its card row before a
+     * single card is drawn, and the seats facing each other need two of those,
+     * so the solver bottoms out at MIN_CARD and two side seats still clip.
+     * Five seats need a taller window than that. Everything else must be clean,
+     * and the tolerance is derived rather than hard-coded so a regression
+     * anywhere else still fails.
      */
-    const shortTable = (height: number, players: number) => players >= 5 && height < 500
+    const tooShort = (height: number, players: number) => players >= 5 && height < 450
 
     const unexpected: string[] = []
     const tolerated: string[] = []
@@ -132,35 +132,27 @@ describe('computeBoardMetrics', () => {
     for (const [label, stageW, stageH] of STAGES) {
       if (stageW < 380) continue
       for (let players = 2; players <= 5; players++) {
-        for (const controls of [false, true]) {
-          const { width, height } = computeTableSize(stageW, stageH)
-          const m = computeBoardMetrics(width, height, players, controls)
-          const blocks = boardBlocks(
-            width,
-            height,
-            players,
-            m.rx,
-            m.ry,
-            m.otherCardWidth,
-            m.heroCardWidth,
-            controls,
-          )
-          if (!fansCollide(blocks)) continue
-          const key = `${label}/${players}p/controls=${controls}`
-          if (shortTable(height, players)) tolerated.push(key)
-          else unexpected.push(key)
-        }
+        const { width, height } = computeTableSize(stageW, stageH)
+        const m = computeBoardMetrics(width, height, players)
+        const blocks = boardBlocks(
+          width,
+          height,
+          players,
+          m.rx,
+          m.ry,
+          m.otherCardWidth,
+          m.heroCardWidth,
+        )
+        if (!fansCollide(blocks)) continue
+        const key = `${label}/${players}p`
+        if (tooShort(height, players)) tolerated.push(key)
+        else unexpected.push(key)
       }
     }
 
     expect(unexpected, `unexpected collisions: ${unexpected.join(', ')}`).toEqual([])
-    // Pin the known-bad set: if the solver starts failing somewhere new, or the
-    // tolerance stops being needed, this is what notices.
-    expect(tolerated).toEqual([
-      'phone 430x900/5p/controls=true',
-      'short window 1400x600/5p/controls=false',
-      'short window 1400x600/5p/controls=true',
-    ])
+    // Pin the known-bad set so the tolerance cannot quietly grow.
+    expect(tolerated).toEqual(['short window 1400x600/5p'])
   })
 
   it('keeps both hands and the pot apart when heads-up', () => {
@@ -169,9 +161,9 @@ describe('computeBoardMetrics', () => {
     // cards, and the two rows overlapped each other by 30px at 1280x650.
     for (const [label, stageW, stageH] of STAGES) {
       const { width, height } = computeTableSize(stageW, stageH, 2)
-      const m = computeBoardMetrics(width, height, 2, true)
+      const m = computeBoardMetrics(width, height, 2)
       // Seat 0 is the anchor, i.e. the seat at the bottom of the screen.
-      const [bottom, top] = fanBlocks(width, height, 2, m.rx, m.ry, m.otherCardWidth, 0, true)
+      const [bottom, top] = fanBlocks(width, height, 2, m.rx, m.ry, m.otherCardWidth, 0)
       const pot = potBlock(width, height, m.otherCardWidth)
 
       expect(bottom.top, `${label}: the two hands overlap`).toBeGreaterThanOrEqual(top.bottom)
@@ -180,19 +172,16 @@ describe('computeBoardMetrics', () => {
     }
   })
 
-  it('reserves a row for the seat buttons only when they are shown', () => {
-    // The buttons are a separate row between the plate and the hand. Leaving
-    // them out of the budget is what let two heads-up seats overlap.
+  it('charges a seat the same budget with or without the seat buttons', () => {
+    // The buttons hang off the side of the plate, so toggling 座位控制 must not
+    // change how much vertical room a seat needs. That is the whole point of
+    // moving them, and why removing the row bought the cards ~31px a seat.
     const slack = SEAT_REACH_SLACK
-    expect(plateReachFor(50, false)).toBe(SEAT_PLATE_REACH + SEAT_GAP + slack)
-    expect(plateReachFor(50, true)).toBe(
-      SEAT_PLATE_REACH + SEAT_GAP + SEAT_BUTTONS_REACH + SEAT_GAP + slack,
-    )
-    // The row budget scales with the card, like the CSS it mirrors, up to the
-    // cap that keeps a huge display from growing billboards.
-    expect(plateReachFor(192, true)).toBeCloseTo(
-      (SEAT_PLATE_REACH + SEAT_GAP + SEAT_BUTTONS_REACH + SEAT_GAP) * MAX_UI_SCALE +
-        slack,
+    expect(plateReachFor(50)).toBe(SEAT_PLATE_REACH + SEAT_GAP + slack)
+    // Scales with the card, like the CSS it mirrors, up to the cap that keeps a
+    // huge display from growing billboards.
+    expect(plateReachFor(192)).toBeCloseTo(
+      (SEAT_PLATE_REACH + SEAT_GAP) * MAX_UI_SCALE + slack,
       5,
     )
   })

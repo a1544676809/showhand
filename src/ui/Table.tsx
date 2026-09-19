@@ -90,6 +90,37 @@ function Seat({
   const statusClass = player.outOfGame ? 'is-out' : player.folded ? 'is-folded' : ''
   const showBet = player.streetCommitted > 0 && !player.folded
 
+  // The buttons ride beside the plate rather than in a row of their own. That
+  // row cost 31px of vertical budget per seat, which the solver had to reserve
+  // between every pair of facing seats — on a short table it was the difference
+  // between 32px and ~54px cards. Seats on the right half put them on the left
+  // so they always lean toward the middle of the table.
+  const controls = showControls && (
+    <div className="seat-controls">
+      <button
+        className={`seat-ctl${player.isBot ? '' : ' on'}`}
+        onClick={onToggleBot}
+        title={player.isBot ? '改为真人控制' : '改为 AI 控制'}
+      >
+        {player.isBot ? '🤖' : '🧑'}
+      </button>
+      <button
+        className={`seat-ctl${isPeeked ? ' on' : ''}`}
+        onClick={onTogglePeek}
+        title={isPeeked ? '隐藏该玩家的底牌' : '观看该玩家的底牌'}
+      >
+        {isPeeked ? '🙈' : '👁'}
+      </button>
+      <button
+        className="seat-ctl"
+        onClick={onCopyPerspective}
+        title={`直接复制以 ${player.name} 视角的局面（对家底牌会被隐藏）`}
+      >
+        📋
+      </button>
+    </div>
+  )
+
   return (
     <div
       className={[
@@ -98,6 +129,7 @@ function Seat({
         isYou ? 'is-you' : '',
         isDirected ? 'is-directed' : '',
         cardsBelow ? 'cards-below' : '',
+        x > 50 ? 'controls-left' : '',
         statusClass,
       ]
         .filter(Boolean)
@@ -109,32 +141,6 @@ function Seat({
         ['--card-h' as string]: `${cardHeight}px`,
       }}
     >
-      {showControls && (
-        <div className="seat-controls">
-          <button
-            className={`seat-ctl${player.isBot ? '' : ' on'}`}
-            onClick={onToggleBot}
-            title={player.isBot ? '改为真人控制' : '改为 AI 控制'}
-          >
-            {player.isBot ? '🤖' : '🧑'}
-          </button>
-          <button
-            className={`seat-ctl${isPeeked ? ' on' : ''}`}
-            onClick={onTogglePeek}
-            title={isPeeked ? '隐藏该玩家的底牌' : '观看该玩家的底牌'}
-          >
-            {isPeeked ? '🙈' : '👁'}
-          </button>
-          <button
-            className="seat-ctl"
-            onClick={onCopyPerspective}
-            title={`直接复制以 ${player.name} 视角的局面（对家底牌会被隐藏）`}
-          >
-            📋
-          </button>
-        </div>
-      )}
-
       <div className="seat-cards">
         {hole !== undefined && (
           <PlayingCard
@@ -160,21 +166,24 @@ function Seat({
       {/* Plate, bet and status stay together so the badge never drifts away
           from the name it belongs to. */}
       <div className="seat-info">
-        <div className="seat-plate">
-          {state.dealerSeat === player.seat && !player.outOfGame && (
-            <span className="dealer-btn" title="庄家">
-              D
+        <div className="seat-plate-row">
+          <div className="seat-plate">
+            {state.dealerSeat === player.seat && !player.outOfGame && (
+              <span className="dealer-btn" title="庄家">
+                D
+              </span>
+            )}
+            <span className="seat-name">{player.name}</span>
+            {isYou && player.name !== '你' ? (
+              <span className="seat-you-tag">你</span>
+            ) : player.isBot ? (
+              <span className="seat-bot-tag">AI</span>
+            ) : null}
+            <span className={`seat-chips${player.chips === 0 ? ' is-broke' : ''}`}>
+              {player.chips.toLocaleString('en-US')}
             </span>
-          )}
-          <span className="seat-name">{player.name}</span>
-          {isYou && player.name !== '你' ? (
-            <span className="seat-you-tag">你</span>
-          ) : player.isBot ? (
-            <span className="seat-bot-tag">AI</span>
-          ) : null}
-          <span className={`seat-chips${player.chips === 0 ? ' is-broke' : ''}`}>
-            {player.chips.toLocaleString('en-US')}
-          </span>
+          </div>
+          {controls}
         </div>
 
         {showBet && (
@@ -247,7 +256,7 @@ export function Table({
     otherCardWidth: other,
     uiScale,
     potScale,
-  } = computeBoardMetrics(width, height, playerCount, showSeatControls)
+  } = computeBoardMetrics(width, height, playerCount)
   const ratio = 1.4
 
   if (width <= 0) return <div className="table-wrap" />

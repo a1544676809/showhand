@@ -322,8 +322,6 @@ export default function App() {
             />
           </div>
 
-          {handFinished && <ResultBand state={state} />}
-
           {/* Above the betting bar, so the bar itself is flush with the bottom
               of the screen where the thumbs are. */}
           <div className="hotkey-hint">
@@ -346,6 +344,18 @@ export default function App() {
               speed={speed}
               onBehalfOf={directorMode && actor && actor.isBot ? actor.name : null}
             />
+          ) : handFinished ? (
+            <div className="actionbar">
+              {/* The result lives *inside* the bar rather than in a band of its
+                  own. As a sibling it added 56px below the stage, which
+                  resized the felt and shifted every seat the moment a hand
+                  ended. The bar is fixed height, so this costs nothing. */}
+              <ResultBand state={state} />
+              <div className="spacer" />
+              <span className="actionbar-note">
+                可导出「速览」分享战况，或按空格开始下一手。
+              </span>
+            </div>
           ) : showStepBar ? (
             <WaitingBar
               state={state}
@@ -361,7 +371,7 @@ export default function App() {
                 {state.stage === 'gameOver' ? '本局已结束' : '本手已结束'}
               </div>
               <div className="spacer" />
-              <span style={{ fontSize: 12.5, color: 'var(--text-muted)' }}>
+              <span className="actionbar-note">
                 可导出「速览」分享战况，或按空格开始下一手。
               </span>
             </div>

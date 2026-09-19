@@ -77,6 +77,8 @@ const PROBE = `(() => {
   const board = document.querySelector('.table-wrap');
   const felt = document.querySelector('.table-felt');
   const pot = document.querySelector('.pot');
+  const bb = box(board);
+  const feltBox = box(felt);
 
   const seats = [...document.querySelectorAll('.seat')].map((el, i) => {
     const part = (sel) => {
@@ -86,6 +88,7 @@ const PROBE = `(() => {
     const info = part('.seat-info');
     const cards = part('.seat-cards');
     const controls = part('.seat-controls');
+    const plate = part('.seat-plate');
     return {
       index: i,
       cls: el.className,
@@ -95,43 +98,70 @@ const PROBE = `(() => {
       name: (el.querySelector('.seat-name') || {}).textContent || '',
       flexDirection: getComputedStyle(el).flexDirection,
       box: box(el),
-      info, cards, controls,
+      info, cards, controls, plate,
       controlsOverPot: overlaps(controls, box(pot)),
+      controlsOutsideBoard: controls && bb ? !(controls.left >= bb.left && controls.right <= bb.right) : false,
     };
   });
 
-  const bb = box(board);
-
-  // Where the shell puts its furniture: the table is centred inside the stage,
-  // so a wide window plus a fixed sidebar can leave the felt looking off-centre.
+  // Where the shell puts its furniture. The table is centred inside the stage,
+  // and the stage is whatever the bars leave over — so these boxes are what
+  // shows whether the felt is about to resize when a bar changes height.
   const chrome = {};
-  for (const sel of ['.topbar', '.stage', '.actionbar, .step-bar', '.log', '.log-panel', '.sidebar']) {
+  for (const sel of [
+    '.topbar',
+    '.table-stage',
+    '.result-band',
+    '.hotkey-hint',
+    '.actionbar',
+    '.step-bar',
+    '.side-panel',
+  ]) {
     const el = document.querySelector(sel);
     if (el) chrome[sel] = box(el);
   }
 
+  // What each bottom bar actually contains, and how its height is spent — the
+  // felt resizes whenever this changes.
+  const bar = document.querySelector('.actionbar') || document.querySelector('.step-bar');
+  const barInfo = bar
+    ? {
+        cls: bar.className,
+        h: round(bar.getBoundingClientRect().height),
+        pad: getComputedStyle(bar).paddingTop + '/' + getComputedStyle(bar).paddingBottom,
+        text: (bar.innerText || '').replace(/\\n/g, ' | ').slice(0, 120),
+        kids: [...bar.children].map(
+          (c) => (c.className || c.tagName) + '=' + round(c.getBoundingClientRect().height),
+        ),
+      }
+    : null;
+
   /*
    * A seat is only laid out correctly when it grows INWARD from its nameplate:
-   * the plate hugs the rail, the hand reaches toward the middle, and the seat
-   * buttons sit between the two. Getting this backwards is what once parked the
-   * buttons on top of the pot.
+   * the plate hugs the rail and the hand reaches toward the middle. The seat
+   * buttons ride *beside* the plate — same band vertically, just outside it
+   * horizontally — rather than in a row of their own, which is what used to
+   * cost the solver 31px of vertical budget per seat.
    *
    * The direction comes from the class the app sets (cardsBelow = y <= 55), not
    * from guessing off the board centre: a four-handed seat sits exactly on the
    * centre line and would otherwise be misread.
    */
   for (const s of seats) {
-    if (!s.info || !s.cards || !s.controls) continue;
+    if (!s.info || !s.cards) continue;
     const upperHalf = s.cardsBelow;
     s.half = upperHalf ? 'upper' : 'lower';
-    const outward =
-      s.half === 'upper'
-        ? { far: s.cards.top - s.info.bottom, near: s.controls.top - s.info.bottom,
-            limit: s.cards.top - s.controls.bottom }
-        : { far: s.info.top - s.cards.bottom, near: s.info.top - s.controls.bottom,
-            limit: s.controls.top - s.cards.bottom };
-    s.growsInward = outward.far >= -2;
-    s.controlsBesidePlate = outward.near >= -2 && outward.limit >= -2;
+    const far = upperHalf ? s.cards.top - s.info.bottom : s.info.top - s.cards.bottom;
+    s.growsInward = far >= -2;
+
+    if (!s.controls || !s.plate) continue;
+    const vAligned =
+      Math.abs((s.controls.top + s.controls.bottom) / 2 - (s.plate.top + s.plate.bottom) / 2) <= 5;
+    const gap =
+      s.controls.left >= s.plate.right
+        ? s.controls.left - s.plate.right
+        : s.plate.left - s.controls.right;
+    s.controlsBesidePlate = vAligned && gap >= 0 && gap <= 40;
   }
 
   const inverted = seats.filter((s) => s.growsInward === false).map((s) => s.name);
@@ -174,6 +204,7 @@ const PROBE = `(() => {
   return {
     viewport: { w: innerWidth, h: innerHeight },
     chrome,
+    barInfo,
     // The two card sizes the solver picked, measured off the DOM.
     heroCard: cardBox('.seat.is-you .card') || cardBox('.seat .card'),
     otherCard: cardBox('.seat:not(.is-you) .card') || cardBox('.seat .card'),
@@ -189,6 +220,22 @@ const PROBE = `(() => {
     minGap: Number.isFinite(minGap) ? minGap : null,
     minGapPair,
     controlsOverPot: seats.filter((s) => s.controlsOverPot).map((s) => s.name),
+    controlsOutsideBoard: seats.filter((s) => s.controlsOutsideBoard).map((s) => s.name),
+    seatsOffFelt: !feltBox
+      ? []
+      : seats
+          .map((s) => {
+            const b = s.box
+            if (!b) return null
+            const over = Math.max(
+              feltBox.top - b.top,
+              b.bottom - feltBox.bottom,
+              feltBox.left - b.left,
+              b.right - feltBox.right,
+            )
+            return over > 1 ? s.name + ' +' + round(over) + 'px' : null
+          })
+          .filter(Boolean),
   };
 })()`
 
@@ -227,7 +274,11 @@ try {
     })
   const evaluate = async (expression) => {
     const r = await send('Runtime.evaluate', { expression, returnByValue: true, awaitPromise: true })
-    if (r.exceptionDetails) throw new Error(r.exceptionDetails.text)
+    if (r.exceptionDetails) {
+      // `text` is just "Uncaught"; the useful part is in the exception payload.
+      const d = r.exceptionDetails
+      throw new Error(d.exception?.description || d.exception?.value || d.text)
+    }
     return r.result.value
   }
 
@@ -341,7 +392,13 @@ try {
     console.log(`scrollY    ${report.scroll.y}`)
     console.log('')
     for (const [sel, b] of Object.entries(report.chrome ?? {})) {
-      console.log(`  chrome ${sel.padEnd(24)} x ${b.left}..${b.right}  y ${b.top}..${b.bottom}`)
+      console.log(`  chrome ${sel.padEnd(16)} x ${b.left}..${b.right}  y ${b.top}..${b.bottom}`)
+    }
+    if (report.barInfo) {
+      const b = report.barInfo
+      console.log(`  bar    ${b.cls}  h=${b.h}  pad=${b.pad}`)
+      console.log(`         kids: ${b.kids.join(', ')}`)
+      console.log(`         text: ${b.text}`)
     }
     console.log('')
     console.log('  seat            half    flexDir    info y      cards y     ctrls y     flags')
@@ -363,6 +420,12 @@ try {
     console.log(`controls off their plate:   ${report.misplacedControls.length ? report.misplacedControls.join(', ') : 'none'}`)
     console.log(`seat controls over the pot: ${report.controlsOverPot.length ? report.controlsOverPot.join(', ') : 'none'}`)
     console.log(
+      `seat controls off the board: ${report.controlsOutsideBoard.length ? report.controlsOutsideBoard.join(', ') : 'none'}`,
+    )
+    console.log(
+      `seats hanging off the felt:  ${report.seatsOffFelt.length ? report.seatsOffFelt.join(', ') : 'none'}`,
+    )
+    console.log(
       `seats overlapping:          ${
         report.collisions.length
           ? report.collisions.map((c) => `${c.a}/${c.b} (v${c.vOverlap} h${c.hOverlap})`).join(', ')
@@ -381,6 +444,8 @@ try {
     report.inverted.length +
     report.misplacedControls.length +
     report.controlsOverPot.length +
+    report.controlsOutsideBoard.length +
+    report.seatsOffFelt.length +
     report.collisions.length +
     (report.scroll.y > 0 ? 1 : 0)
   process.exitCode = bad ? 1 : 0

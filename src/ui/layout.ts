@@ -70,6 +70,16 @@ export const FAN_LENGTH = 5
 export const FAN_SPAN = (FAN_LENGTH - 1) * FAN_STEP + 1
 /** Fraction of the available half-width a fan is allowed to consume. */
 const FAN_FILL = 0.94
+/**
+ * Horizontal inset of the felt inside the board, matching `.table-rail`.
+ *
+ * The fans have to clear the *felt*, not the board box. Measuring the room to
+ * the board edge left the outermost card of a five-handed fan sitting on the
+ * brown rail, which is what this constant exists to prevent.
+ */
+export const RAIL_INSET_X = 2.5
+/** `.table-rail`'s own padding, which the felt sits inside of. */
+export const RAIL_PADDING = 9
 /** Smallest card the solver will shrink to before giving up. */
 export const MIN_CARD = 22
 /**
@@ -126,19 +136,17 @@ export interface FanBlock {
  * design pixels (i.e. at `--ui-scale` 1). These mirror styles.css exactly; if
  * the CSS changes, these must follow or the solver silently overlaps seats.
  *
- *   .seat-info    plate + gap + status badge            -> SEAT_PLATE_REACH
- *   .seat         gap between rows                      -> SEAT_GAP
- *   .seat-controls per-seat buttons, only when shown    -> SEAT_BUTTONS_REACH
- *   .seat-cards   min-height: calc(--card-h + 4px)      -> CARD_BOX_EXTRA
+ *   .seat-info     plate + gap + status badge           -> SEAT_PLATE_REACH
+ *   .seat          gap between rows                     -> SEAT_GAP
+ *   .seat-cards    min-height: calc(--card-h + 4px)     -> CARD_BOX_EXTRA
  *
- * The seat buttons are a *separate row* between the plate and the hand, and
- * were missing from this budget entirely — which is why two heads-up seats
- * overlapped by 30px at 1280x650 the moment the buttons were shown. They cost
- * nothing when hidden, so the reserve is conditional.
+ * The per-seat buttons used to be their own row here, costing 31px of budget
+ * per seat. They now hang off the side of the plate (`.seat-plate-row`), so
+ * they consume none of it — which is exactly what buys the cards their size
+ * back on a short table.
  */
 export const SEAT_PLATE_REACH = 53
 export const SEAT_GAP = 5
-export const SEAT_BUTTONS_REACH = 26
 export const CARD_BOX_EXTRA = 4
 /**
  * Slop for the browser's own rounding.
@@ -150,10 +158,9 @@ export const CARD_BOX_EXTRA = 4
  */
 export const SEAT_REACH_SLACK = 2
 
-/** Everything above the hand: plate, badge and — when shown — the button row. */
-export function plateReachFor(cardWidth: number, seatControls: boolean): number {
-  const rows = SEAT_PLATE_REACH + SEAT_GAP + (seatControls ? SEAT_BUTTONS_REACH + SEAT_GAP : 0)
-  return rows * uiScaleFor(cardWidth) + SEAT_REACH_SLACK
+/** Everything above the hand: the nameplate row and the gap below it. */
+export function plateReachFor(cardWidth: number): number {
+  return (SEAT_PLATE_REACH + SEAT_GAP) * uiScaleFor(cardWidth) + SEAT_REACH_SLACK
 }
 
 /**
@@ -220,19 +227,9 @@ export function boardBlocks(
   ry: number,
   cardWidth: number,
   heroCardWidth = 0,
-  seatControls = false,
 ): FanBlock[] {
   return [
-    ...fanBlocks(
-      tableWidth,
-      tableHeight,
-      playerCount,
-      rx,
-      ry,
-      cardWidth,
-      heroCardWidth,
-      seatControls,
-    ),
+    ...fanBlocks(tableWidth, tableHeight, playerCount, rx, ry, cardWidth, heroCardWidth),
     potBlock(tableWidth, tableHeight, cardWidth),
   ]
 }
@@ -256,7 +253,6 @@ export function fanBlocks(
   ry: number,
   cardWidth: number,
   heroCardWidth = 0,
-  seatControls = false,
 ): FanBlock[] {
   return Array.from({ length: playerCount }, (_, i) => {
     const angle = Math.PI / 2 + (i * 2 * Math.PI) / playerCount
@@ -269,8 +265,7 @@ export function fanBlocks(
     // is not fanned, so it is five full card widths plus the gaps between them.
     const isHero = heroCardWidth > 0 && i === 0
     const width = isHero ? heroCardWidth : cardWidth
-    const reach =
-      plateReachFor(width, seatControls) + width * 1.4 + CARD_BOX_EXTRA
+    const reach = plateReachFor(width) + width * 1.4 + CARD_BOX_EXTRA
     const half = isHero ? (FAN_LENGTH * width + 12) / 2 : (FAN_SPAN / 2) * width
 
     const growsDown = yPercent <= 55
@@ -330,18 +325,18 @@ export function computeBoardMetrics(
   tableWidth: number,
   tableHeight: number,
   playerCount: number,
-  seatControls = false,
 ): BoardMetrics {
   if (tableWidth <= 0 || tableHeight <= 0) {
     return { rx: 0, ry: 0, heroCardWidth: 0, otherCardWidth: 0, uiScale: 1, potScale: 1 }
   }
 
   // `ry` is a compromise. It tracks the felt's own half-height well enough that
-  // seats sit on the rail rather than adrift from it (~40% of the box), while
-  // still leaving the vertical gap that keeps a five-card fan clear of the seat
-  // opposite. Bigger values fit short, wide windows but push the top and bottom
-  // seats off the felt; smaller ones strand them in the middle.
-  const ry = 40
+  // seats sit on the rail rather than adrift from it, while still leaving the
+  // vertical gap that keeps a five-card fan clear of the seat opposite. It was
+  // 40 while the rail was inset 9%; the rail now sits at 5% so the seats can
+  // spread to 7%..93%, which is worth about 8% more card on a table where the
+  // facing seats, not the width, are the binding constraint.
+  const ry = 43
   const rx = tableWidth >= 440 ? 34 : 31
 
   // The anchor seat's row is not fanned, so it is five full card widths wide
@@ -355,7 +350,12 @@ export function computeBoardMetrics(
 
   // Distance from the table's centre line to the outermost seat, in pixels.
   const seatOffset = (rx * maxSeatReach(playerCount) * tableWidth) / 100
-  const room = Math.max(48, tableWidth / 2 - seatOffset)
+  // Room from that seat to the edge of the *felt*: the board inset plus the
+  // rail's own padding, not just half the board.
+  const room = Math.max(
+    48,
+    tableWidth * (0.5 - RAIL_INSET_X / 100) - RAIL_PADDING - seatOffset,
+  )
   let otherCardWidth = clamp(
     Math.round((room * FAN_FILL) / (FAN_SPAN / 2)),
     MIN_CARD,
@@ -384,11 +384,12 @@ export function computeBoardMetrics(
         ry,
         otherCardWidth,
         otherCardWidth,
-        seatControls,
       ),
     )
   ) {
-    otherCardWidth -= 2
+    // Clamped, not just decremented: an odd starting width would otherwise step
+    // straight past MIN_CARD (23 -> 21) and never be corrected.
+    otherCardWidth = Math.max(MIN_CARD, otherCardWidth - 2)
   }
 
   const heroTarget = Math.min(
@@ -408,7 +409,6 @@ export function computeBoardMetrics(
         ry,
         otherCardWidth,
         heroCardWidth,
-        seatControls,
       ),
     )
   ) {

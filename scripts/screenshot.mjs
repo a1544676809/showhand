@@ -238,8 +238,16 @@ async function main() {
      * the far side of the hand, which parked them in the middle of the table on
      * top of the pot.
      */
+    /**
+     * The seat buttons ride *beside* the plate — same band vertically, just
+     * outside it horizontally. They used to be a row of their own below the
+     * plate, which cost the layout solver 31px of vertical budget per seat.
+     * Also asserts the buttons stay on the board and off the pot.
+     */
     const assertControlsBesidePlates = async (label) => {
       const rows = await cdp.eval(`(() => {
+        const board = document.querySelector('.table-wrap');
+        const br = board ? board.getBoundingClientRect() : null;
         const pot = document.querySelector('.pot');
         const pr = pot ? pot.getBoundingClientRect() : null;
         return [...document.querySelectorAll('.seat')].map((el) => {
@@ -248,15 +256,21 @@ async function main() {
           if (!plate || !ctl) return null;
           const p = plate.getBoundingClientRect();
           const c = ctl.getBoundingClientRect();
-          const gap =
-            c.top >= p.bottom ? c.top - p.bottom : p.top >= c.bottom ? p.top - c.bottom : -1;
+          const hGap =
+            c.left >= p.right ? c.left - p.right : p.left >= c.right ? p.left - c.right : -1;
+          const vOff = Math.abs((c.top + c.bottom) / 2 - (p.top + p.bottom) / 2);
           const overPot = pr
             ? !(c.right < pr.left || c.left > pr.right || c.bottom < pr.top || c.top > pr.bottom)
             : false;
+          const offBoard = br
+            ? !(c.left >= br.left - 1 && c.right <= br.right + 1)
+            : false;
           return {
             name: (el.querySelector('.seat-name') || {}).textContent || '?',
-            gap: Math.round(gap),
+            hGap: Math.round(hGap),
+            vOff: Math.round(vOff),
             overPot,
+            offBoard,
           };
         }).filter(Boolean);
       })()`)
@@ -264,16 +278,71 @@ async function main() {
       if (!rows.length) return
       let bad = 0
       for (const r of rows) {
-        if (r.gap < 0 || r.gap > 64) {
-          errors.push(`${label}: seat ${r.name} buttons are ${r.gap}px from its nameplate`)
+        if (r.hGap < 0 || r.hGap > 40) {
+          errors.push(`${label}: seat ${r.name} buttons sit ${r.hGap}px beside its nameplate`)
+          bad++
+        }
+        if (r.vOff > 6) {
+          errors.push(`${label}: seat ${r.name} buttons are ${r.vOff}px off the nameplate's row`)
           bad++
         }
         if (r.overPot) {
           errors.push(`${label}: seat ${r.name} buttons overlap the pot`)
           bad++
         }
+        if (r.offBoard) {
+          errors.push(`${label}: seat ${r.name} buttons hang off the board`)
+          bad++
+        }
       }
       if (!bad) log(`${label}: ${rows.length} seat button row(s) beside their plates, clear of the pot`)
+    }
+
+    /**
+     * No two seats may overlap, and no hand may cover the pot.
+     *
+     * This is the invariant the layout solver models, but it is checked here
+     * against the boxes the browser actually laid out — the solver once
+     * under-counted a whole row and two heads-up seats overlapped by 30px.
+     */
+    const assertSeatsClear = async (label) => {
+      const result = await cdp.eval(`(() => {
+        const seats = [...document.querySelectorAll('.seat')].map((el) => ({
+          name: (el.querySelector('.seat-name') || {}).textContent || '?',
+          r: el.getBoundingClientRect(),
+        }));
+        const pot = document.querySelector('.pot');
+        const pr = pot ? pot.getBoundingClientRect() : null;
+        const hits = [];
+        for (let i = 0; i < seats.length; i++) {
+          for (let j = i + 1; j < seats.length; j++) {
+            const a = seats[i].r, b = seats[j].r;
+            if (a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom) {
+              hits.push(seats[i].name + '/' + seats[j].name);
+            }
+          }
+        }
+        const overPot = [];
+        if (pr) {
+          for (const el of document.querySelectorAll('.seat')) {
+            const cards = el.querySelector('.seat-cards');
+            if (!cards) continue;
+            const c = cards.getBoundingClientRect();
+            if (c.left < pr.right && pr.left < c.right && c.top < pr.bottom && pr.top < c.bottom) {
+              overPot.push((el.querySelector('.seat-name') || {}).textContent || '?');
+            }
+          }
+        }
+        return { hits, overPot };
+      })()`)
+
+      if (result.hits.length) errors.push(`${label}: seats overlap (${result.hits.join(', ')})`)
+      if (result.overPot.length) {
+        errors.push(`${label}: a hand covers the pot (${result.overPot.join(', ')})`)
+      }
+      if (!result.hits.length && !result.overPot.length) {
+        log(`${label}: no seat overlaps, no hand over the pot`)
+      }
     }
 
     /** How many hole cards are currently face up, per seat index. */
@@ -347,6 +416,7 @@ async function main() {
     await capture('02-table-hotseat')
     await assertNoPageScroll('table 1680x1050')
     await assertSeatsClearOfChrome('table 1680x1050')
+    await assertSeatsClear('table 1680x1050')
 
     // 3 — five-handed hot-seat with the privacy gate visible
     await goto(`${BASE}/?quick=hotseat&seats=5&speed=1&seed=demo-b`)
@@ -451,6 +521,7 @@ async function main() {
     await capture('10-mobile')
     await assertNoPageScroll('table 430x900')
     await assertSeatsClearOfChrome('table 430x900')
+    await assertSeatsClear('table 430x900')
 
     await setViewport(1366, 768)
     await goto(`${BASE}/?quick=hotseat&seats=5&speed=2&seed=demo-h`)
@@ -459,6 +530,7 @@ async function main() {
     await capture('11-laptop-1366')
     await assertNoPageScroll('table 1366x768')
     await assertSeatsClearOfChrome('table 1366x768')
+    await assertSeatsClear('table 1366x768')
 
     // 12-14 — iPad, which is 4:3 in both orientations.
     await setViewport(1366, 1024)
@@ -468,6 +540,7 @@ async function main() {
     await capture('12-ipad-landscape-4x3')
     await assertNoPageScroll('iPad landscape 1366x1024')
     await assertSeatsClearOfChrome('iPad landscape 1366x1024')
+    await assertSeatsClear('iPad landscape 1366x1024')
 
     await setViewport(1024, 768)
     await goto(`${BASE}/?quick=hotseat&seats=5&speed=2&seed=demo-h`)
@@ -476,6 +549,7 @@ async function main() {
     await capture('13-ipad-1024x768')
     await assertNoPageScroll('iPad 1024x768')
     await assertSeatsClearOfChrome('iPad 1024x768')
+    await assertSeatsClear('iPad 1024x768')
 
     await setViewport(810, 1080)
     await goto(`${BASE}/?quick=hotseat&seats=4&speed=2&seed=demo-j`)
@@ -484,6 +558,7 @@ async function main() {
     await capture('14-ipad-portrait-4x3')
     await assertNoPageScroll('iPad portrait 810x1080')
     await assertSeatsClearOfChrome('iPad portrait 810x1080')
+    await assertSeatsClear('iPad portrait 810x1080')
 
     // 15 — the director can bet for whichever seat is on turn. Step through the
     // deal, then confirm the betting bar targets that seat and actually works.
@@ -555,6 +630,7 @@ async function main() {
     await capture('16-narrow-tall-350x1127')
     await assertNoPageScroll('narrow 350x1127')
     await assertSeatsClearOfChrome('narrow 350x1127')
+    await assertSeatsClear('narrow 350x1127')
 
     // Heads-up on a wide stage: two seats facing each other across the felt is
     // where the buttons drifted into the middle of the table.
@@ -566,6 +642,7 @@ async function main() {
     await capture('17-headsup-wide-1280x650')
     await assertNoPageScroll('heads-up 1280x650')
     await assertSeatsClearOfChrome('heads-up 1280x650')
+    await assertSeatsClear('heads-up 1280x650')
     await assertControlsBesidePlates('heads-up 1280x650')
 
     // 18+ — light theme
@@ -600,6 +677,7 @@ async function main() {
     await capture('22-light-mobile')
     await assertNoPageScroll('light mobile 430x900')
     await assertSeatsClearOfChrome('light mobile 430x900')
+    await assertSeatsClear('light mobile 430x900')
 
     // DOM-level invariants on the god view: every rendered card face must be
     // unique, and no seat may show more than five cards.

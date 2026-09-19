@@ -86,6 +86,14 @@
      a short window would take the whole middle and squeeze the cards. */
   --pot-scale: 1;
 
+  /* Every bottom bar is exactly this tall.
+     The stage is whatever the bars leave over, so a bar that changes height
+     resizes the felt and shifts the whole table. The three states used to be
+     39 / 54 / 67px, which moved the table by 28px every time betting started
+     or stopped. Sized to fit the betting bar: 33px button + 12px bar padding
+     + 8px raise-control padding + borders. */
+  --bar-h: 54px;
+
   /* Shell padding, plus the iOS notch / home-indicator insets. `env()` is 0
      everywhere else, so the browser build is unaffected. */
   --pad-x: 14px;
@@ -446,10 +454,13 @@ select {
 
 .table-rail {
   position: absolute;
-  inset: 9% 3.5%;
+  /* Was 9% / 3.5%. The felt is the thing that reads as "the table", so the
+     rail is trimmed as far as the seat ellipse allows — seats sit at 7%..93%
+     of the board, leaving 2% of rail outside them. */
+  inset: 5% 2.5%;
   border-radius: 50% / 50%;
   background: linear-gradient(160deg, var(--rail-hi), var(--rail-mid) 45%, var(--rail-lo));
-  padding: 13px;
+  padding: 9px;
   box-shadow:
     0 30px 62px rgba(0, 0, 0, 0.5),
     inset 0 2px 0 rgba(255, 255, 255, 0.16),
@@ -569,11 +580,10 @@ select {
  * on the action bar. Growing inward from the anchor keeps every seat inside the
  * board whatever its content.
  *
- * Child order is explicit rather than DOM order: the hand always sits furthest
- * from the nameplate, and the seat buttons always sit between the two — right
- * next to the plate. Reversing the flex axis could not express that, because it
- * flips the buttons to the far side of the hand for lower-half seats, which
- * parked them in the middle of the table.
+ * Child order is explicit rather than DOM order, so the hand always sits
+ * furthest from the nameplate and grows inward toward the middle of the table.
+ * The seat buttons are not part of that stack: they hang off the side of the
+ * plate, which is what keeps them from costing a row of vertical budget.
  */
 .seat {
   position: absolute;
@@ -585,10 +595,6 @@ select {
   z-index: 3;
   transition: filter 0.25s, opacity 0.25s;
   width: max-content;
-}
-
-.seat-controls {
-  order: 2;
 }
 
 .seat-cards {
@@ -629,6 +635,14 @@ select {
   flex-direction: column;
   align-items: center;
   gap: calc(4px * var(--ui-scale));
+}
+
+/* The plate row is the positioning context for the seat buttons, which hang
+   off its side instead of taking a row of their own. */
+.seat-plate-row {
+  position: relative;
+  display: flex;
+  justify-content: center;
 }
 
 .seat-plate {
@@ -788,14 +802,26 @@ select {
   white-space: nowrap;
 }
 
-/* Per-seat action buttons. They are the first child of the seat, so with the
-   hand growing inward they always end up on the inside edge — next to the
-   nameplate and never overhanging the board. */
 .seat-controls {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   gap: calc(4px * var(--ui-scale));
   z-index: 4;
   animation: fade-in 0.15s ease-out;
+}
+
+/* Beside the plate, leaning toward the middle of the table. Seats on the right
+   half mirror so the row never runs off the rail. */
+.seat:not(.controls-left) .seat-controls {
+  left: 100%;
+  margin-left: calc(6px * var(--ui-scale));
+}
+
+.seat.controls-left .seat-controls {
+  right: 100%;
+  margin-right: calc(6px * var(--ui-scale));
 }
 
 .seat-ctl {
@@ -1019,7 +1045,10 @@ select {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
+  padding: 6px 14px;
+  /* Fixed, not min-height: the felt must not resize when the bar swaps between
+     acting, waiting and finished. */
+  min-height: var(--bar-h);
   border-radius: var(--radius);
   background: var(--surface-bar);
   border: 1px solid var(--line-strong);
@@ -1087,7 +1116,7 @@ select {
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 5px 11px;
+  padding: 2px 11px;
   border-radius: 10px;
   background: var(--surface-inset);
   border: 1px solid var(--line);
@@ -1155,7 +1184,8 @@ input[type='range']::-moz-range-thumb {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 9px 14px;
+  padding: 6px 14px;
+  min-height: var(--bar-h);
   border-radius: var(--radius);
   background: var(--surface-bar);
   border: 1px solid var(--line-strong);
@@ -1803,17 +1833,25 @@ input[type='range']::-moz-range-thumb {
 
 /* ------------------------------------------------------------- result band */
 
+/* Lives inside the finished `.actionbar`. It used to be a band of its own
+   below the stage, which added 56px and resized the felt the moment a hand
+   ended — so it carries no box of its own any more. */
 .result-band {
-  flex: none;
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
-  padding: 10px 14px;
-  border-radius: var(--radius);
-  background: color-mix(in srgb, var(--green) 13%, transparent);
-  border: 1px solid color-mix(in srgb, var(--green) 32%, transparent);
-  animation: rise 0.25s cubic-bezier(0.2, 0.9, 0.3, 1);
+  min-width: 0;
+  animation: fade-in 0.2s ease-out;
+}
+
+/* The export hint that shares the finished bar. */
+.actionbar-note {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .result-title {
@@ -2113,6 +2151,12 @@ input[type='range']::-moz-range-thumb {
    `max()` rather than a flat override, so an iPad Pro still gets the larger
    buttons that `--ui-scale` asks for instead of being pinned to the floor. */
 @media (pointer: coarse) {
+  /* Bigger tap targets need a taller bar; everything else follows from the
+     same variable, so the felt stays stable on touch too. */
+  :root {
+    --bar-h: 62px;
+  }
+
   .seat-ctl {
     width: max(34px, calc(26px * var(--ui-scale)));
     height: max(34px, calc(26px * var(--ui-scale)));
